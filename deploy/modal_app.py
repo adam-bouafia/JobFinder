@@ -27,20 +27,36 @@ Search-jobs (Adzuna) isn't wired up here - the web UI doesn't expose it
 
 from __future__ import annotations
 
-import tomllib
-from pathlib import Path
-
 import modal
 
 app = modal.App("jobfinder")
 
-# Read runtime deps from pyproject.toml itself rather than a second,
-# hand-maintained list here - a hardcoded copy drifted the moment
-# reportlab was added as a real dependency (PDF export needed it, but
-# only pyproject.toml got updated), crash-looping the deployed container
-# with ModuleNotFoundError on every request.
-_PYPROJECT = tomllib.loads((Path(__file__).resolve().parent.parent / "pyproject.toml").read_text())
-RUNTIME_DEPENDENCIES = _PYPROJECT["project"]["dependencies"]
+# Kept in sync with [project.dependencies] in pyproject.toml by
+# tests/test_deploy_deps.py, which fails loudly if they drift - not by a
+# runtime pyproject.toml read. That was tried first and broke differently:
+# Modal re-imports this whole module inside the remote container just to
+# look up the function objects, and __file__ resolves to a different
+# relative depth there (no local repo checkout) than at local `modal
+# deploy` time, so the same path expression crashed one way locally-wrong
+# and another way remotely-wrong. A plain hardcoded list has no such
+# environment-dependent behaviour; a test is the right place to catch
+# drift, not cleverness in code that runs twice in two different places.
+RUNTIME_DEPENDENCIES = [
+    "typer>=0.12",
+    "httpx>=0.27",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "rich>=13.0",
+    "rapidfuzz>=3.9",
+    "fastapi>=0.142.2",
+    "uvicorn[standard]>=0.54.0",
+    "jinja2>=3.1.6",
+    "pdfplumber>=0.11.10",
+    "pytesseract>=0.3.13",
+    "pdf2image>=1.17.0",
+    "python-dotenv>=1.2.4",
+    "reportlab>=5.0.1",
+]
 
 image = (
     modal.Image.debian_slim(python_version="3.12")
