@@ -14,7 +14,6 @@ PROJECT_ROOT = PACKAGE_DIR.parent.parent
 _data_dir_override = os.environ.get("JOBFINDER_DATA_DIR")
 DATA_DIR = Path(_data_dir_override) if _data_dir_override else PROJECT_ROOT / "data"
 
-DB_PATH = DATA_DIR / "jobfinder.db"
 SPONSORS_SNAPSHOT_PATH = DATA_DIR / "sponsors_latest.json"
 CONFIG_PATH = PROJECT_ROOT / "jobfinder.toml"
 RESUME_DIR = DATA_DIR / "resumes"

@@ -20,7 +20,11 @@ that accept open applications.
   logic, they're two views onto `sponsors/match.py` etc.
 - TypeScript owns the Chrome extension (Manifest V3) - the only other
   language in the project.
-- SQLite for storage (single user, trivial data volume, zero ops).
+- PostgreSQL (hosted free on [Neon](https://neon.tech), serverless/scale-
+  to-zero) for storage - moved off SQLite (2026-10-03) once this stopped
+  being strictly single-user-local: Neon gives a real `DATABASE_URL` any
+  deployment (Modal or otherwise) can reach, without standing up and
+  operating a database server by hand.
 
 ## Hosting
 
@@ -64,7 +68,7 @@ flowchart TB
         NORM["sponsors/normalize.py"]
         MATCH["sponsors/match.py\nrapidfuzz token_set_ratio"]
         EXPORT["sponsors/export.py"]
-        DB[("SQLite data/jobfinder.db")]
+        DB[("PostgreSQL (Neon)")]
         RESUME["resume/extract.py, ocr.py, fields.py"]
         JOBS["jobs/ats/*, jobs/ingest.py"]
         SCORE["matching/score.py"]
@@ -135,7 +139,7 @@ flowchart LR
     SRC["IND public register page\nind.nl/.../public-register-work"]
     SCRAPE["scrape.py\nhttpx GET, descriptive User-Agent\nBeautifulSoup+lxml row parse"]
     NORM["normalize.py\nlowercase, strip B.V./N.V./punctuation\nstrip stray leading symbols"]
-    DB[("SQLite sponsors table\nkvk, name, name_normalized, fetched_at")]
+    DB[("PostgreSQL sponsors table\nkvk, name, name_normalized, fetched_at")]
     MATCH["match.py\nrapidfuzz token_set_ratio vs name_normalized\nthreshold 90"]
     CLIOUT["jf match --company 'X'\n/ jf serve search box\nsponsor yes/no + matched name + score"]
     SNAP["export.py\nsponsors_latest.json"]

@@ -22,6 +22,11 @@ jobfinder.local.toml
 # Claude Code project instructions - kept local, not in the repo
 CLAUDE.md
 
+# Reference material (architecture proposals, design mockups) - local
+# planning input, not meant to be pushed
+job_aggregator_architecture.md
+6ab39b73d7e0d910411189.png
+
 # Extension
 extension/node_modules/
 extension/dist/

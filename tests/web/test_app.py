@@ -14,7 +14,7 @@ from jobfinder import db
 from jobfinder.jobs.ingest import ingest_jobs
 from jobfinder.jobs.models import JobListing
 from jobfinder.sponsors.normalize import normalize
-from jobfinder.web.app import create_app, get_db_path
+from jobfinder.web.app import create_app, get_dsn
 
 
 def _sample_resume_pdf(text: str) -> bytes:
@@ -28,24 +28,27 @@ def _sample_resume_pdf(text: str) -> bytes:
 
 
 @pytest.fixture
-def client(tmp_path: Path) -> TestClient:
-    db_path = tmp_path / "test.db"
-    with db.cursor(db_path) as conn:
+def client(dsn: str) -> TestClient:
+    with db.cursor(dsn) as conn:
         for kvk, name in [
             ("31047344", "Booking.com B.V."),
             ("17052456", "ASML Netherlands B.V."),
         ]:
             conn.execute(
-                "INSERT INTO sponsors (kvk, name, name_normalized, fetched_at) VALUES (?, ?, ?, ?)",
+                "INSERT INTO sponsors (kvk, name, name_normalized, fetched_at) "
+                "VALUES (%s, %s, %s, %s)",
                 (kvk, name, normalize(name), "2026-10-01T00:00:00"),
             )
         conn.execute(
-            "INSERT OR REPLACE INTO meta (key, value) VALUES ('ind_synced_at', ?)",
+            """
+            INSERT INTO meta (key, value) VALUES ('ind_synced_at', %s)
+            ON CONFLICT (key) DO UPDATE SET value = excluded.value
+            """,
             ("2026-10-01T00:00:00",),
         )
 
     test_app = create_app()
-    test_app.dependency_overrides[get_db_path] = lambda: db_path
+    test_app.dependency_overrides[get_dsn] = lambda: dsn
     return TestClient(test_app)
 
 
@@ -55,12 +58,11 @@ def test_index_shows_sponsor_count(client: TestClient) -> None:
     assert "2 recognised sponsors synced" in response.text
 
 
-def test_index_with_no_sponsor_data_prompts_sync(tmp_path: Path) -> None:
-    empty_db = tmp_path / "empty.db"
-    with db.cursor(empty_db):
+def test_index_with_no_sponsor_data_prompts_sync(dsn: str) -> None:
+    with db.cursor(dsn):
         pass
     test_app = create_app()
-    test_app.dependency_overrides[get_db_path] = lambda: empty_db
+    test_app.dependency_overrides[get_dsn] = lambda: dsn
 
     response = TestClient(test_app).get("/")
 
@@ -101,11 +103,10 @@ def test_static_htmx_is_served(client: TestClient) -> None:
 
 
 @pytest.fixture
-def client_with_jobs(tmp_path: Path) -> TestClient:
-    db_path = tmp_path / "test.db"
-    with db.cursor(db_path) as conn:
+def client_with_jobs(dsn: str) -> TestClient:
+    with db.cursor(dsn) as conn:
         conn.execute(
-            "INSERT INTO sponsors (kvk, name, name_normalized, fetched_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO sponsors (kvk, name, name_normalized, fetched_at) VALUES (%s, %s, %s, %s)",
             ("31047344", "Booking.com B.V.", normalize("Booking.com B.V."), "2026-10-01T00:00:00"),
         )
     ingest_jobs(
@@ -120,11 +121,11 @@ def client_with_jobs(tmp_path: Path) -> TestClient:
             ),
             JobListing("Unrelated Co", "General Application", None, "https://x/2", "test"),
         ],
-        db_path=db_path,
+        dsn=dsn,
     )
 
     test_app = create_app()
-    test_app.dependency_overrides[get_db_path] = lambda: db_path
+    test_app.dependency_overrides[get_dsn] = lambda: dsn
     return TestClient(test_app)
 
 
@@ -141,12 +142,11 @@ def test_index_shows_job_description(client_with_jobs: TestClient) -> None:
     assert "Own our payments backend." in response.text
 
 
-def test_index_with_no_jobs_shows_empty_state(tmp_path: Path) -> None:
-    empty_db = tmp_path / "empty.db"
-    with db.cursor(empty_db):
+def test_index_with_no_jobs_shows_empty_state(dsn: str) -> None:
+    with db.cursor(dsn):
         pass
     test_app = create_app()
-    test_app.dependency_overrides[get_db_path] = lambda: empty_db
+    test_app.dependency_overrides[get_dsn] = lambda: dsn
 
     response = TestClient(test_app).get("/")
 

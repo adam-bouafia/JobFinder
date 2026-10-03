@@ -7,13 +7,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from ..db import cursor
-from ..paths import DB_PATH, SPONSORS_SNAPSHOT_PATH
+from ..paths import SPONSORS_SNAPSHOT_PATH
 
 IND_SOURCE_URL = "https://ind.nl/en/public-register-recognised-sponsors/public-register-work"
 
 
-def export_snapshot(path: Path = SPONSORS_SNAPSHOT_PATH, db_path: Path = DB_PATH) -> int:
-    with cursor(db_path) as conn:
+def export_snapshot(path: Path = SPONSORS_SNAPSHOT_PATH, dsn: str | None = None) -> int:
+    with cursor(dsn) as conn:
         rows = conn.execute(
             "SELECT kvk, name, name_normalized FROM sponsors ORDER BY name"
         ).fetchall()

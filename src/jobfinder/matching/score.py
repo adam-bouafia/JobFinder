@@ -8,11 +8,9 @@ currently loaded resume, not a fixed persona.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
 
 from ..db import cursor
 from ..jobs.experience import classify_experience_level
-from ..paths import DB_PATH
 from ..resume.parse import latest_resume_profile
 
 SPONSOR_BONUS = 5.0
@@ -52,7 +50,7 @@ def score_job(
     return score
 
 
-def rescore_jobs(db_path: Path = DB_PATH, country: str = "NL") -> int:
+def rescore_jobs(dsn: str | None = None, country: str = "NL") -> int:
     """Recompute fit_score for every stored job against the latest resume
     profile (empty skill list if none has been parsed yet). Also backfills
     experience_level for any row ingested before that column existed -
@@ -60,10 +58,10 @@ def rescore_jobs(db_path: Path = DB_PATH, country: str = "NL") -> int:
 
     Returns the number of rows updated.
     """
-    profile = latest_resume_profile(db_path)
+    profile = latest_resume_profile(dsn)
     resume_skills = profile.skills if profile else []
 
-    with cursor(db_path) as conn:
+    with cursor(dsn) as conn:
         rows = conn.execute("SELECT id, title, location, sponsor_kvk FROM jobs").fetchall()
         for row in rows:
             score = score_job(
@@ -74,7 +72,7 @@ def rescore_jobs(db_path: Path = DB_PATH, country: str = "NL") -> int:
                 country=country,
             )
             conn.execute(
-                "UPDATE jobs SET fit_score = ?, experience_level = ? WHERE id = ?",
+                "UPDATE jobs SET fit_score = %s, experience_level = %s WHERE id = %s",
                 (score, classify_experience_level(row["title"]), row["id"]),
             )
     return len(rows)

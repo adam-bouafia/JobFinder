@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from jobfinder import db
@@ -12,9 +10,8 @@ from jobfinder.sponsors.normalize import normalize
 
 
 @pytest.fixture
-def seeded_db(tmp_path: Path) -> Path:
-    db_path = tmp_path / "test.db"
-    with db.cursor(db_path) as conn:
+def seeded_db(dsn: str) -> str:
+    with db.cursor(dsn) as conn:
         for kvk, name in [
             ("31047344", "Booking.com B.V."),
             ("83892869", "@EasePay B.V."),
@@ -25,32 +22,33 @@ def seeded_db(tmp_path: Path) -> Path:
             ("30132076", "Wink B.V."),
         ]:
             conn.execute(
-                "INSERT INTO sponsors (kvk, name, name_normalized, fetched_at) VALUES (?, ?, ?, ?)",
+                "INSERT INTO sponsors (kvk, name, name_normalized, fetched_at) "
+                "VALUES (%s, %s, %s, %s)",
                 (kvk, name, normalize(name), "2026-10-01T00:00:00"),
             )
-    return db_path
+    return dsn
 
 
-def test_match_company_finds_match_despite_legal_suffix(seeded_db: Path) -> None:
-    result = match_company("Booking.com", db_path=seeded_db)
+def test_match_company_finds_match_despite_legal_suffix(seeded_db: str) -> None:
+    result = match_company("Booking.com", dsn=seeded_db)
     assert result.is_sponsor is True
     assert result.kvk == "31047344"
 
 
-def test_match_company_finds_match_despite_stray_leading_symbol(seeded_db: Path) -> None:
-    result = match_company("EasePay", db_path=seeded_db)
+def test_match_company_finds_match_despite_stray_leading_symbol(seeded_db: str) -> None:
+    result = match_company("EasePay", dsn=seeded_db)
     assert result.is_sponsor is True
     assert result.kvk == "83892869"
 
 
-def test_match_company_finds_abbreviated_official_name(seeded_db: Path) -> None:
-    result = match_company("ASML", db_path=seeded_db)
+def test_match_company_finds_abbreviated_official_name(seeded_db: str) -> None:
+    result = match_company("ASML", dsn=seeded_db)
     assert result.is_sponsor is True
     assert result.kvk == "17052456"
 
 
-def test_match_company_rejects_unrelated_name(seeded_db: Path) -> None:
-    result = match_company("Totally Unrelated Bakery XYZ", db_path=seeded_db)
+def test_match_company_rejects_unrelated_name(seeded_db: str) -> None:
+    result = match_company("Totally Unrelated Bakery XYZ", dsn=seeded_db)
     assert result.is_sponsor is False
 
 
@@ -67,16 +65,15 @@ def test_match_company_rejects_unrelated_name(seeded_db: Path) -> None:
     ],
 )
 def test_match_company_rejects_short_unrelated_query_against_long_candidate(
-    seeded_db: Path, unrelated_query: str
+    seeded_db: str, unrelated_query: str
 ) -> None:
-    result = match_company(unrelated_query, db_path=seeded_db)
+    result = match_company(unrelated_query, dsn=seeded_db)
     assert result.is_sponsor is False
 
 
-def test_match_company_raises_on_empty_table(tmp_path: Path) -> None:
-    empty_db_path = tmp_path / "empty.db"
-    with db.cursor(empty_db_path):
+def test_match_company_raises_on_empty_table(dsn: str) -> None:
+    with db.cursor(dsn):
         pass  # just create the schema, no rows
 
     with pytest.raises(RuntimeError, match="sync-sponsors"):
-        match_company("Booking.com", db_path=empty_db_path)
+        match_company("Booking.com", dsn=dsn)

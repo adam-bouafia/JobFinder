@@ -4,16 +4,19 @@
     uv run modal deploy deploy/modal_app.py  # deploy, prints the live URL
     uv run modal serve deploy/modal_app.py   # temporary preview URL, live reload
 
-A persistent Volume holds the data directory (SQLite DB + sponsor
-snapshot) so it survives across deploys and container restarts - same
-file, same WAL-mode SQLite, as running locally.
+Storage is a real networked Postgres (Neon), not SQLite-on-a-Volume
+anymore - see docs/architecture.md for why. `DATABASE_URL` comes from the
+`jobfinder-db` Modal Secret. The Volume still exists, but only for resume
+PDF uploads and the `sponsors_latest.json` snapshot the Chrome extension
+bundles - both plain files, nothing shared/mutable the way the old SQLite
+file was.
 
-Deliberately pinned to a single container (max_containers=1): Modal
-Volumes use "last write wins" semantics under concurrent writes from
-multiple containers, which would risk corrupting the SQLite file. One
-container handling several requests concurrently (@modal.concurrent) is
-the right trade for a personal, single-user tool - real horizontal
-scaling would need a proper networked database instead, not this.
+Still pinned to a single container (max_containers=1). That was
+originally required (Volume "last write wins" under concurrent SQLite
+writers); Postgres removes that specific constraint, so this is now a
+deliberate choice to keep things simple for a personal, single-user tool
+rather than a hard requirement - revisit if this ever needs real
+concurrency.
 
 Known limitation, acceptable at this scale: a long-lived warm container
 won't see a monthly sync's new volume writes until it's recycled (Modal
@@ -27,7 +30,7 @@ own posting, never an aggregator redirect. Adzuna was tried and dropped
 (see docs/architecture.md's risk table): its API terms require a visible
 "Jobs by Adzuna" attribution badge, which conflicts with a clean,
 direct-to-employer open-source product. Run `seed_jobs` once manually
-after a fresh volume (see deploy/README.md) to pull a company's board;
+after a fresh database (see deploy/README.md) to pull a company's board;
 it isn't scheduled, since which companies to track is a deliberate,
 manual choice, not something to auto-refresh.
 """
@@ -64,6 +67,8 @@ RUNTIME_DEPENDENCIES = [
     "python-dotenv>=1.2.4",
     "reportlab>=5.0.1",
     "python-multipart>=0.0.20",
+    "psycopg[binary]>=3.2",
+    "psycopg-pool>=3.2",
 ]
 
 image = (
@@ -81,9 +86,13 @@ volume = modal.Volume.from_name("jobfinder-data", create_if_missing=True)
 DATA_MOUNT = "/data"
 
 
+DB_SECRET = modal.Secret.from_name("jobfinder-db")
+
+
 @app.function(
     image=image,
     volumes={DATA_MOUNT: volume},
+    secrets=[DB_SECRET],
     max_containers=1,
     timeout=60,
 )
@@ -101,11 +110,12 @@ def web():  # type: ignore[no-untyped-def]  # Modal's own decorator, not typed f
 @app.function(
     image=image,
     volumes={DATA_MOUNT: volume},
+    secrets=[DB_SECRET],
     schedule=modal.Cron("0 9 1 * *"),  # 1st of the month - matches IND's own cadence
     timeout=300,
 )
 def sync_sponsors() -> None:
-    """Mirrors `jf sync-sponsors`, for the deployed instance's own volume."""
+    """Mirrors `jf sync-sponsors`, for the deployed instance's Postgres."""
     import os
 
     os.environ["JOBFINDER_DATA_DIR"] = DATA_MOUNT
@@ -120,17 +130,15 @@ def sync_sponsors() -> None:
 
 @app.function(
     image=image,
-    volumes={DATA_MOUNT: volume},
+    secrets=[DB_SECRET],
     timeout=300,
 )
 def seed_jobs(source: str = "greenhouse", slug: str = "stripe") -> None:
     """Mirrors `jf fetch-jobs` + `jf rescore-jobs`, for the deployed
-    instance's own volume. Not scheduled - run manually (see
+    instance's Postgres. Not scheduled - run manually (see
     deploy/README.md) to add or top up a company's roles on the live site.
+    No Volume needed here: this only ever writes to Postgres.
     """
-    import os
-
-    os.environ["JOBFINDER_DATA_DIR"] = DATA_MOUNT
     from jobfinder.jobs.ats import fetch as ats_fetch
     from jobfinder.jobs.ingest import ingest_jobs
     from jobfinder.matching.score import rescore_jobs
@@ -138,5 +146,4 @@ def seed_jobs(source: str = "greenhouse", slug: str = "stripe") -> None:
     listings = ats_fetch(source, slug)
     inserted = ingest_jobs(listings)
     rescored = rescore_jobs()
-    volume.commit()
     print(f"Found {len(listings)} roles, {inserted} new, {rescored} rescored")

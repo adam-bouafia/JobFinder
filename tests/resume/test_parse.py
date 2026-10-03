@@ -7,10 +7,8 @@ from pathlib import Path
 from jobfinder.resume.parse import latest_resume_profile, parse_resume
 
 
-def test_parse_resume_extracts_fields_from_a_real_pdf(text_pdf: Path, tmp_path: Path) -> None:
-    db_path = tmp_path / "test.db"
-
-    profile = parse_resume(text_pdf, db_path=db_path)
+def test_parse_resume_extracts_fields_from_a_real_pdf(text_pdf: Path, dsn: str) -> None:
+    profile = parse_resume(text_pdf, dsn=dsn)
 
     assert "python" in profile.skills
     assert "kubernetes" in profile.skills
@@ -20,28 +18,25 @@ def test_parse_resume_extracts_fields_from_a_real_pdf(text_pdf: Path, tmp_path: 
     assert "Jane Doe" in profile.raw_text
 
 
-def test_parse_resume_persists_and_is_retrievable(text_pdf: Path, tmp_path: Path) -> None:
-    db_path = tmp_path / "test.db"
-
-    parse_resume(text_pdf, db_path=db_path)
-    stored = latest_resume_profile(db_path=db_path)
+def test_parse_resume_persists_and_is_retrievable(text_pdf: Path, dsn: str) -> None:
+    parse_resume(text_pdf, dsn=dsn)
+    stored = latest_resume_profile(dsn=dsn)
 
     assert stored is not None
     assert stored.source_path == str(text_pdf)
     assert "python" in stored.skills
 
 
-def test_latest_resume_profile_returns_none_when_nothing_parsed_yet(tmp_path: Path) -> None:
+def test_latest_resume_profile_returns_none_when_nothing_parsed_yet(dsn: str) -> None:
     from jobfinder import db
 
-    db_path = tmp_path / "empty.db"
-    with db.cursor(db_path):
+    with db.cursor(dsn):
         pass  # just create the schema
 
-    assert latest_resume_profile(db_path=db_path) is None
+    assert latest_resume_profile(dsn=dsn) is None
 
 
-def test_latest_resume_profile_returns_the_most_recent_one(tmp_path: Path) -> None:
+def test_latest_resume_profile_returns_the_most_recent_one(tmp_path: Path, dsn: str) -> None:
     # Deliberately two plain text PDFs, not the scanned_pdf fixture: this
     # test is about insert-order/tiebreak logic, not the OCR path, and
     # shouldn't depend on tesseract being installed to pass.
@@ -55,13 +50,12 @@ def test_latest_resume_profile_returns_the_most_recent_one(tmp_path: Path) -> No
         c.save()
         return path
 
-    db_path = tmp_path / "test.db"
     first_pdf = make_pdf("first.pdf", "First Resume - more than twenty characters of real text")
     second_pdf = make_pdf("second.pdf", "Second Resume - more than twenty characters of real text")
 
-    parse_resume(first_pdf, db_path=db_path)
-    parse_resume(second_pdf, db_path=db_path)
+    parse_resume(first_pdf, dsn=dsn)
+    parse_resume(second_pdf, dsn=dsn)
 
-    latest = latest_resume_profile(db_path=db_path)
+    latest = latest_resume_profile(dsn=dsn)
     assert latest is not None
     assert latest.source_path == str(second_pdf)

@@ -13,8 +13,8 @@ and matches jobs by keyword, experience level, and country. NL-only for now.
 Python owns scraping, matching, resume parsing, and both the CLI and the
 local web UI - they're two views over the same backend code, not separate
 stacks. TypeScript owns the Chrome extension (Manifest V3), the only other
-language in the project. SQLite for storage: single user, trivial data
-volume, zero ops.
+language in the project. PostgreSQL (Neon, free serverless tier) for
+storage.
 
 ```mermaid
 flowchart TB
@@ -29,7 +29,7 @@ flowchart TB
         NORM["sponsors/normalize.py"]
         MATCH["sponsors/match.py\nrapidfuzz token_set_ratio"]
         EXPORT["sponsors/export.py"]
-        DB[("SQLite data/jobfinder.db")]
+        DB[("PostgreSQL (Neon)")]
         RESUME["resume/extract.py, ocr.py, fields.py"]
         JOBS["jobs/ats/*, jobs/ingest.py"]
         SCORE["matching/score.py"]
@@ -103,7 +103,7 @@ flowchart LR
     SRC["IND public register page\nind.nl/.../public-register-work"]
     SCRAPE["scrape.py\nhttpx GET, descriptive User-Agent\nBeautifulSoup+lxml row parse"]
     NORM["normalize.py\nlowercase, strip B.V./N.V./punctuation\nstrip stray leading symbols"]
-    DB[("SQLite sponsors table\nkvk, name, name_normalized, fetched_at")]
+    DB[("PostgreSQL sponsors table\nkvk, name, name_normalized, fetched_at")]
     MATCH["match.py\nrapidfuzz token_set_ratio vs name_normalized\nthreshold 90"]
     CLIOUT["jf match --company 'X'\n/ jf serve search box\nsponsor yes/no + matched name + score"]
     SNAP["export.py\nsponsors_latest.json"]
@@ -147,7 +147,7 @@ TypeScript port in the extension).
 | CLI | Typer | Fast to build, matches other personal tools in this setup |
 | Web UI | FastAPI + Jinja2 + htmx | Same language as the backend, no second frontend toolchain for a single-user tool; htmx gives live search without hand-written JS |
 | Browser extension | TypeScript, Vite + CRXJS, Manifest V3 | Only option for a Chrome extension; bundled sponsor snapshot + in-browser matching, no runtime network calls |
-| Storage | SQLite, WAL mode | Single user, ~13k sponsor rows, zero ops |
+| Storage | PostgreSQL (Neon, free serverless tier) | A real `DATABASE_URL` any deployment can reach, without hand-running a database server |
 | Hosting | Local-first (`127.0.0.1` by default) | Nothing here needs to be always-on or public, see Hosting below |
 
 ### Hosting

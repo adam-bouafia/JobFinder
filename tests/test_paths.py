@@ -11,7 +11,7 @@ def test_data_dir_defaults_to_project_root_data() -> None:
     from jobfinder import paths
 
     assert paths.DATA_DIR == paths.PROJECT_ROOT / "data"
-    assert paths.DB_PATH == paths.DATA_DIR / "jobfinder.db"
+    assert paths.SPONSORS_SNAPSHOT_PATH == paths.DATA_DIR / "sponsors_latest.json"
 
 
 def test_jobfinder_data_dir_env_var_overrides_data_dir() -> None:

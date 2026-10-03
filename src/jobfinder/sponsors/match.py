@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
-from pathlib import Path
+from typing import Any
 
 from rapidfuzz import fuzz, process
 
 from ..db import cursor
-from ..paths import DB_PATH
 from .normalize import normalize
 
-SponsorChoices = dict[str, sqlite3.Row]
+SponsorChoices = dict[str, dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -23,10 +21,10 @@ class MatchResult:
     score: float
 
 
-def load_sponsor_choices(db_path: Path = DB_PATH) -> SponsorChoices:
+def load_sponsor_choices(dsn: str | None = None) -> SponsorChoices:
     """Load the sponsor table once, for matching many names without
     re-querying/re-scanning per name (see jobs/ingest.py)."""
-    with cursor(db_path) as conn:
+    with cursor(dsn) as conn:
         rows = conn.execute("SELECT kvk, name, name_normalized FROM sponsors").fetchall()
     if not rows:
         raise RuntimeError("Sponsor table is empty; run `jf sync-sponsors` first.")
@@ -68,7 +66,7 @@ def match_against_choices(
     return MatchResult(is_sponsor=True, matched_name=row["name"], kvk=row["kvk"], score=score)
 
 
-def match_company(name: str, threshold: float = 90.0, db_path: Path = DB_PATH) -> MatchResult:
+def match_company(name: str, threshold: float = 90.0, dsn: str | None = None) -> MatchResult:
     """Check whether `name` matches a recognised sponsor.
 
     One-shot convenience wrapper around load_sponsor_choices +
@@ -78,5 +76,5 @@ def match_company(name: str, threshold: float = 90.0, db_path: Path = DB_PATH) -
     Raises:
         RuntimeError: if the sponsors table is empty (sync hasn't run yet).
     """
-    choices = load_sponsor_choices(db_path)
+    choices = load_sponsor_choices(dsn)
     return match_against_choices(name, choices, threshold)

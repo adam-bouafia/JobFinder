@@ -24,7 +24,7 @@ from .. import db
 from ..jobs.export import to_markdown, to_pdf_bytes, to_text
 from ..jobs.ingest import StoredJob, count_jobs, list_jobs
 from ..matching.score import rescore_jobs
-from ..paths import DB_PATH, RESUME_DIR
+from ..paths import RESUME_DIR
 from ..resume.parse import latest_resume_profile, parse_resume
 from ..sponsors.match import match_company
 
@@ -40,14 +40,16 @@ WEB_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
 
 
-def get_db_path() -> Path:
-    """FastAPI dependency, overridden in tests to point at a tmp_path DB.
+def get_dsn() -> str | None:
+    """FastAPI dependency, overridden in tests to point at a throwaway
+    Postgres schema.
 
-    Keeps the same explicit-db_path testability principle the rest of the
+    Keeps the same explicit-dsn testability principle the rest of the
     codebase uses, via FastAPI's own override mechanism instead of
-    monkeypatching a global.
+    monkeypatching a global. None means "use the real DATABASE_URL" - see
+    db.cursor().
     """
-    return DB_PATH
+    return None
 
 
 def create_app() -> FastAPI:
@@ -55,7 +57,7 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="static")
 
     def _search_jobs(
-        db_path: Path,
+        dsn: str | None,
         query: str,
         city: str,
         sponsors_only: bool,
@@ -63,7 +65,7 @@ def create_app() -> FastAPI:
         experience: str,
     ) -> list[StoredJob]:
         return list_jobs(
-            db_path=db_path,
+            dsn=dsn,
             query=query or None,
             city=city or None,
             sponsors_only=sponsors_only,
@@ -73,7 +75,7 @@ def create_app() -> FastAPI:
         )
 
     def _count_jobs(
-        db_path: Path,
+        dsn: str | None,
         query: str,
         city: str,
         sponsors_only: bool,
@@ -81,7 +83,7 @@ def create_app() -> FastAPI:
         experience: str,
     ) -> int:
         return count_jobs(
-            db_path=db_path,
+            dsn=dsn,
             query=query or None,
             city=city or None,
             sponsors_only=sponsors_only,
@@ -92,7 +94,7 @@ def create_app() -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def index(
         request: Request,
-        db_path: Annotated[Path, Depends(get_db_path)],
+        dsn: Annotated[str | None, Depends(get_dsn)],
         query: str = Query(default=""),
         city: str = Query(default=""),
         sponsors_only: bool = Query(default=False),
@@ -101,10 +103,10 @@ def create_app() -> FastAPI:
         uploaded: bool = Query(default=False),
         error: str = Query(default=""),
     ) -> HTMLResponse:
-        stats = db.sponsor_stats(db_path)
-        jobs = _search_jobs(db_path, query, city, sponsors_only, open_applications_only, experience)
-        total = _count_jobs(db_path, query, city, sponsors_only, open_applications_only, experience)
-        resume_profile = latest_resume_profile(db_path)
+        stats = db.sponsor_stats(dsn)
+        jobs = _search_jobs(dsn, query, city, sponsors_only, open_applications_only, experience)
+        total = _count_jobs(dsn, query, city, sponsors_only, open_applications_only, experience)
+        resume_profile = latest_resume_profile(dsn)
         return templates.TemplateResponse(
             request,
             "index.html",
@@ -127,7 +129,7 @@ def create_app() -> FastAPI:
     @app.get("/results", response_class=HTMLResponse)
     def results(
         request: Request,
-        db_path: Annotated[Path, Depends(get_db_path)],
+        dsn: Annotated[str | None, Depends(get_dsn)],
         query: str = Query(default=""),
         city: str = Query(default=""),
         sponsors_only: bool = Query(default=False),
@@ -136,8 +138,8 @@ def create_app() -> FastAPI:
     ) -> HTMLResponse:
         """htmx partial: just the results fragment, for live filtering as
         you type against whatever's already stored locally."""
-        jobs = _search_jobs(db_path, query, city, sponsors_only, open_applications_only, experience)
-        total = _count_jobs(db_path, query, city, sponsors_only, open_applications_only, experience)
+        jobs = _search_jobs(dsn, query, city, sponsors_only, open_applications_only, experience)
+        total = _count_jobs(dsn, query, city, sponsors_only, open_applications_only, experience)
         return templates.TemplateResponse(
             request,
             "_job_results.html",
@@ -153,15 +155,15 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/company", response_class=HTMLResponse)
-    def company(request: Request, db_path: Annotated[Path, Depends(get_db_path)]) -> HTMLResponse:
-        stats = db.sponsor_stats(db_path)
+    def company(request: Request, dsn: Annotated[str | None, Depends(get_dsn)]) -> HTMLResponse:
+        stats = db.sponsor_stats(dsn)
         return templates.TemplateResponse(
             request, "company.html", {"stats": stats, "active_nav": "company"}
         )
 
     @app.post("/resume/upload")
     def upload_resume(
-        db_path: Annotated[Path, Depends(get_db_path)],
+        dsn: Annotated[str | None, Depends(get_dsn)],
         file: UploadFile,
     ) -> RedirectResponse:
         looks_like_pdf = file.content_type == "application/pdf" or (
@@ -177,20 +179,20 @@ def create_app() -> FastAPI:
         dest.write_bytes(file.file.read())
 
         try:
-            parse_resume(dest, db_path=db_path)
+            parse_resume(dest, dsn=dsn)
         except Exception:
             params = urlencode(
                 {"error": "Could not read that PDF - is it a text or scanned resume?"}
             )
             return RedirectResponse(url=f"/?{params}", status_code=303)
-        rescore_jobs(db_path=db_path)
+        rescore_jobs(dsn=dsn)
 
         return RedirectResponse(url="/?uploaded=true", status_code=303)
 
     @app.get("/search", response_class=HTMLResponse)
     def search(
         request: Request,
-        db_path: Annotated[Path, Depends(get_db_path)],
+        dsn: Annotated[str | None, Depends(get_dsn)],
         company: str = Query(default=""),
     ) -> HTMLResponse:
         company = company.strip()
@@ -199,7 +201,7 @@ def create_app() -> FastAPI:
                 request, "_match_result.html", {"result": None, "query": ""}
             )
         try:
-            result = match_company(company, db_path=db_path)
+            result = match_company(company, dsn=dsn)
         except RuntimeError:
             result = None
         return templates.TemplateResponse(
@@ -208,7 +210,7 @@ def create_app() -> FastAPI:
 
     @app.get("/export")
     def export(
-        db_path: Annotated[Path, Depends(get_db_path)],
+        dsn: Annotated[str | None, Depends(get_dsn)],
         fmt: str = Query(default="md", alias="format"),
         query: str = Query(default=""),
         city: str = Query(default=""),
@@ -220,7 +222,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="format must be md, txt, or pdf")
 
         jobs = list_jobs(
-            db_path=db_path,
+            dsn=dsn,
             query=query or None,
             city=city or None,
             sponsors_only=sponsors_only,

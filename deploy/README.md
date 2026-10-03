@@ -38,20 +38,33 @@ Checked directly against Modal's docs: custom domains need the Team plan
 hackathon credit plus the free Starter tier. The `label="jobfinder"`
 subdomain customization above is the free alternative and already applied.
 
+### Postgres (Neon)
+
+Storage moved off SQLite to a real Postgres (2026-10-03 - see
+docs/architecture.md). One-time setup:
+
+1. Create a free project at [neon.tech](https://neon.tech) and copy its
+   connection string.
+2. `modal secret create jobfinder-db DATABASE_URL=<neon-connection-string>`
+3. Locally, put the same value in `.env` as `DATABASE_URL` (a separate
+   local podman Postgres also works for local dev - see `.env`'s comment).
+
 ### What it does
 
 - Wraps the existing FastAPI app (`jobfinder.web.app`) unchanged - same
   code that runs via `jf serve` locally.
-- Mounts a Modal Volume at `/data` for the SQLite DB and sponsor snapshot,
-  so data survives across deploys and restarts.
-- Pinned to a single container (`max_containers=1`). Modal Volumes use
-  "last write wins" under concurrent writes from multiple containers,
-  which would risk corrupting the SQLite file - one container handling
-  several requests at once is the right trade for a personal tool, not a
-  limitation to work around.
+- `DATABASE_URL` comes from the `jobfinder-db` Modal Secret, attached to
+  `web()`, `sync_sponsors()`, and `seed_jobs()`.
+- Mounts a Modal Volume at `/data` too, but only for resume PDF uploads
+  and the sponsor snapshot JSON the Chrome extension bundles - plain
+  files, not a shared mutable database anymore.
+- Still pinned to a single container (`max_containers=1`) - that was
+  originally required (SQLite-on-a-Volume's "last write wins" risk under
+  concurrent writers), Postgres removes that specific constraint, so
+  it's now a deliberate simplicity choice rather than a hard requirement.
 - A scheduled Modal function re-runs the IND sponsor sync monthly,
   independent of the local systemd timer / GitHub Actions cron - the
-  deployed instance has its own volume, so it needs its own refresh.
+  deployed instance has its own database, so it needs its own refresh.
 
 - `seed_jobs` pulls a company's roles directly from its ATS board
   (Greenhouse/Lever/Ashby/Recruitee/Workable) - every link is the
@@ -70,7 +83,7 @@ subdomain customization above is the free alternative and already applied.
 
 ### First run
 
-The volume starts empty. After the first deploy, seed it once:
+The database starts empty. After the first deploy, seed it once:
 
 ```bash
 uv run modal run deploy/modal_app.py::sync_sponsors

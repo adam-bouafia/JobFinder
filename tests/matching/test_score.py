@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from jobfinder import db
 from jobfinder.jobs.ingest import ingest_jobs, list_jobs
 from jobfinder.jobs.models import JobListing
@@ -33,63 +31,58 @@ def test_score_job_rewards_country_match() -> None:
     assert nl > elsewhere
 
 
-def test_rescore_jobs_updates_fit_score_from_latest_resume(tmp_path: Path) -> None:
-    db_path = tmp_path / "test.db"
-    with db.cursor(db_path) as conn:
+def test_rescore_jobs_updates_fit_score_from_latest_resume(dsn: str) -> None:
+    with db.cursor(dsn) as conn:
         conn.execute(
-            "INSERT INTO sponsors (kvk, name, name_normalized, fetched_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO sponsors (kvk, name, name_normalized, fetched_at) VALUES (%s, %s, %s, %s)",
             ("31047344", "Booking.com B.V.", normalize("Booking.com B.V."), "2026-10-01"),
         )
         conn.execute(
             "INSERT INTO resume_profile "
             "(source_path, raw_text, skills, years_experience, education, parsed_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            ("resume.pdf", "...", '["python", "kubernetes"]', 5.0, "[]", "2026-10-01"),
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            ("resume.pdf", "...", ["python", "kubernetes"], 5.0, [], "2026-10-01"),
         )
 
     ingest_jobs(
         [JobListing("Booking.com", "Senior Python Engineer", "Amsterdam", "https://x/1", "test")],
-        db_path=db_path,
+        dsn=dsn,
     )
 
-    updated = rescore_jobs(db_path=db_path)
+    updated = rescore_jobs(dsn=dsn)
 
     assert updated == 1
-    jobs = list_jobs(db_path=db_path)
+    jobs = list_jobs(dsn=dsn)
     # sponsor (5) + python skill match (1) -- "kubernetes" isn't in the title
     assert jobs[0].fit_score == 6.0
 
 
-def test_rescore_jobs_with_no_resume_still_credits_sponsor_status(tmp_path: Path) -> None:
-    db_path = tmp_path / "test.db"
-    with db.cursor(db_path) as conn:
+def test_rescore_jobs_with_no_resume_still_credits_sponsor_status(dsn: str) -> None:
+    with db.cursor(dsn) as conn:
         conn.execute(
-            "INSERT INTO sponsors (kvk, name, name_normalized, fetched_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO sponsors (kvk, name, name_normalized, fetched_at) VALUES (%s, %s, %s, %s)",
             ("31047344", "Booking.com B.V.", normalize("Booking.com B.V."), "2026-10-01"),
         )
 
-    ingest_jobs(
-        [JobListing("Booking.com", "Engineer", None, "https://x/1", "test")], db_path=db_path
-    )
+    ingest_jobs([JobListing("Booking.com", "Engineer", None, "https://x/1", "test")], dsn=dsn)
 
-    rescore_jobs(db_path=db_path)
+    rescore_jobs(dsn=dsn)
 
-    jobs = list_jobs(db_path=db_path)
+    jobs = list_jobs(dsn=dsn)
     assert jobs[0].fit_score == 5.0
 
 
-def test_rescore_jobs_backfills_experience_level_for_pre_migration_rows(tmp_path: Path) -> None:
-    db_path = tmp_path / "test.db"
-    with db.cursor(db_path) as conn:
+def test_rescore_jobs_backfills_experience_level_for_pre_migration_rows(dsn: str) -> None:
+    with db.cursor(dsn) as conn:
         # Simulate a row inserted before experience_level existed: insert
         # directly, bypassing ingest_jobs (which always sets it now).
         conn.execute(
             "INSERT INTO jobs (company_name, title, url, source, fetched_at) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "VALUES (%s, %s, %s, %s, %s)",
             ("Acme", "Senior Platform Engineer", "https://x/1", "test", "2026-10-01"),
         )
 
-    rescore_jobs(db_path=db_path)
+    rescore_jobs(dsn=dsn)
 
-    jobs = list_jobs(db_path=db_path)
+    jobs = list_jobs(dsn=dsn)
     assert jobs[0].experience_level == "senior"

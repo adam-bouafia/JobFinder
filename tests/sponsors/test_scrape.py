@@ -45,35 +45,31 @@ def test_fetch_sponsors_returns_parsed_rows(monkeypatch: pytest.MonkeyPatch) -> 
     assert len(rows) == 5
 
 
-def test_sync_sponsors_upserts_into_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_sync_sponsors_upserts_into_db(monkeypatch: pytest.MonkeyPatch, dsn: str) -> None:
     monkeypatch.setattr(scrape, "fetch_html", lambda: FIXTURE_HTML)
-    db_path = tmp_path / "test.db"
 
-    count = scrape.sync_sponsors(db_path=db_path)
+    count = scrape.sync_sponsors(dsn=dsn)
 
     assert count == 5
-    with db.cursor(db_path) as conn:
+    with db.cursor(dsn) as conn:
         stored = conn.execute("SELECT COUNT(*) AS c FROM sponsors").fetchone()["c"]
     assert stored == 5
 
 
-def test_sync_sponsors_is_idempotent_on_rerun(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_sync_sponsors_is_idempotent_on_rerun(monkeypatch: pytest.MonkeyPatch, dsn: str) -> None:
     monkeypatch.setattr(scrape, "fetch_html", lambda: FIXTURE_HTML)
-    db_path = tmp_path / "test.db"
 
-    scrape.sync_sponsors(db_path=db_path)
-    second_count = scrape.sync_sponsors(db_path=db_path)
+    scrape.sync_sponsors(dsn=dsn)
+    second_count = scrape.sync_sponsors(dsn=dsn)
 
     assert second_count == 5
-    with db.cursor(db_path) as conn:
+    with db.cursor(dsn) as conn:
         stored = conn.execute("SELECT COUNT(*) AS c FROM sponsors").fetchone()["c"]
     assert stored == 5
 
 
 def test_sync_sponsors_collapses_duplicate_kvk_in_source(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, dsn: str
 ) -> None:
     """The live IND register has been seen to list the same KVK twice; the
     returned count should reflect distinct sponsors stored, not raw rows
@@ -85,11 +81,10 @@ def test_sync_sponsors_collapses_duplicate_kvk_in_source(
     </tbody></table>
     """
     monkeypatch.setattr(scrape, "fetch_html", lambda: html_with_duplicate)
-    db_path = tmp_path / "test.db"
 
-    count = scrape.sync_sponsors(db_path=db_path)
+    count = scrape.sync_sponsors(dsn=dsn)
 
     assert count == 1
-    with db.cursor(db_path) as conn:
+    with db.cursor(dsn) as conn:
         stored = conn.execute("SELECT COUNT(*) AS c FROM sponsors").fetchone()["c"]
     assert stored == 1

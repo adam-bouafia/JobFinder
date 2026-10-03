@@ -4,20 +4,18 @@ open-application flag, then store.
 
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from typing import Any
 
 from ..db import cursor
-from ..paths import DB_PATH
 from ..sponsors.match import load_sponsor_choices, match_against_choices
 from .experience import classify_experience_level
 from .models import JobListing
 from .open_applications import is_open_application
 
 
-def ingest_jobs(listings: list[JobListing], db_path: Path = DB_PATH) -> int:
+def ingest_jobs(listings: list[JobListing], dsn: str | None = None) -> int:
     """Store listings, enriching each with sponsor-match status and an
     open-application flag.
 
@@ -28,14 +26,14 @@ def ingest_jobs(listings: list[JobListing], db_path: Path = DB_PATH) -> int:
         return 0
 
     try:
-        choices = load_sponsor_choices(db_path)
+        choices = load_sponsor_choices(dsn)
     except RuntimeError:
         # Sponsor table not synced yet - still ingest jobs, just unmatched.
         choices = None
 
-    now = datetime.now(UTC).isoformat(timespec="seconds")
+    now = datetime.now(UTC)
     inserted = 0
-    with cursor(db_path) as conn:
+    with cursor(dsn) as conn:
         for listing in listings:
             sponsor_kvk = None
             sponsor_score = None
@@ -47,11 +45,12 @@ def ingest_jobs(listings: list[JobListing], db_path: Path = DB_PATH) -> int:
 
             result = conn.execute(
                 """
-                INSERT OR IGNORE INTO jobs
+                INSERT INTO jobs
                     (company_name, title, location, url, source,
                      is_open_application, sponsor_kvk, sponsor_match_score,
                      experience_level, description, fetched_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (url) DO NOTHING
                 """,
                 (
                     listing.company_name,
@@ -59,7 +58,7 @@ def ingest_jobs(listings: list[JobListing], db_path: Path = DB_PATH) -> int:
                     listing.location,
                     listing.url,
                     listing.source,
-                    int(is_open_application(listing.title)),
+                    is_open_application(listing.title),
                     sponsor_kvk,
                     sponsor_score,
                     classify_experience_level(listing.title),
@@ -88,7 +87,7 @@ class StoredJob:
     fetched_at: str
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> StoredJob:
+    def from_row(cls, row: dict[str, Any]) -> StoredJob:
         return cls(
             id=row["id"],
             company_name=row["company_name"],
@@ -96,12 +95,12 @@ class StoredJob:
             location=row["location"],
             url=row["url"],
             source=row["source"],
-            is_open_application=bool(row["is_open_application"]),
+            is_open_application=row["is_open_application"],
             sponsor_kvk=row["sponsor_kvk"],
             fit_score=row["fit_score"],
             experience_level=row["experience_level"],
             description=row["description"],
-            fetched_at=row["fetched_at"],
+            fetched_at=row["fetched_at"].isoformat(timespec="seconds"),
         )
 
 
@@ -116,28 +115,28 @@ def _build_where(
     clauses: list[str] = []
     params: list[object] = []
     if query:
-        clauses.append("(title LIKE ? OR company_name LIKE ?)")
+        clauses.append("(title ILIKE %s OR company_name ILIKE %s)")
         like_query = f"%{query}%"
         params.extend([like_query, like_query])
     if city:
-        clauses.append("location LIKE ?")
+        clauses.append("location ILIKE %s")
         params.append(f"%{city}%")
     if sponsors_only:
         clauses.append("sponsor_kvk IS NOT NULL")
     if open_applications_only:
-        clauses.append("is_open_application = 1")
+        clauses.append("is_open_application = TRUE")
     if experience_level:
-        clauses.append("experience_level = ?")
+        clauses.append("experience_level = %s")
         params.append(experience_level)
     if min_fit_score is not None:
-        clauses.append("fit_score >= ?")
+        clauses.append("fit_score >= %s")
         params.append(min_fit_score)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     return where, params
 
 
 def list_jobs(
-    db_path: Path = DB_PATH,
+    dsn: str | None = None,
     *,
     query: str | None = None,
     city: str | None = None,
@@ -158,13 +157,13 @@ def list_jobs(
     )
     params = [*params, limit]
 
-    with cursor(db_path) as conn:
+    with cursor(dsn) as conn:
         rows = conn.execute(
             f"""
             SELECT * FROM jobs
             {where}
             ORDER BY fit_score IS NULL, fit_score DESC, fetched_at DESC
-            LIMIT ?
+            LIMIT %s
             """,
             params,
         ).fetchall()
@@ -172,7 +171,7 @@ def list_jobs(
 
 
 def count_jobs(
-    db_path: Path = DB_PATH,
+    dsn: str | None = None,
     *,
     query: str | None = None,
     city: str | None = None,
@@ -187,6 +186,7 @@ def count_jobs(
     where, params = _build_where(
         query, sponsors_only, open_applications_only, experience_level, min_fit_score, city
     )
-    with cursor(db_path) as conn:
+    with cursor(dsn) as conn:
         row = conn.execute(f"SELECT COUNT(*) AS c FROM jobs {where}", params).fetchone()
+    assert row is not None  # COUNT(*) always returns exactly one row
     return int(row["c"])

@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 
 import httpx
 from bs4 import BeautifulSoup
 
 from ..db import cursor
-from ..paths import DB_PATH
 from .normalize import normalize
 
 IND_URL = "https://ind.nl/en/public-register-recognised-sponsors/public-register-work"
@@ -62,7 +60,7 @@ def fetch_sponsors() -> list[SponsorRow]:
     return rows
 
 
-def sync_sponsors(db_path: Path = DB_PATH) -> int:
+def sync_sponsors(dsn: str | None = None) -> int:
     """Fetch, parse, and upsert the IND register into the sponsors table.
 
     Returns the number of distinct sponsors now stored. The IND page has
@@ -71,27 +69,35 @@ def sync_sponsors(db_path: Path = DB_PATH) -> int:
     be slightly lower than the number of rows parsed off the page.
     """
     rows = fetch_sponsors()
-    now = datetime.now(UTC).isoformat(timespec="seconds")
-    with cursor(db_path) as conn:
-        conn.executemany(
+    now = datetime.now(UTC)
+    with cursor(dsn) as conn:
+        with conn.cursor() as cur:
+            cur.executemany(
+                """
+                INSERT INTO sponsors (kvk, name, name_normalized, fetched_at)
+                VALUES (%(kvk)s, %(name)s, %(name_normalized)s, %(fetched_at)s)
+                ON CONFLICT(kvk) DO UPDATE SET
+                    name=excluded.name,
+                    name_normalized=excluded.name_normalized,
+                    fetched_at=excluded.fetched_at
+                """,
+                [
+                    {
+                        "kvk": row.kvk,
+                        "name": row.name,
+                        "name_normalized": row.name_normalized,
+                        "fetched_at": now,
+                    }
+                    for row in rows
+                ],
+            )
+        conn.execute(
             """
-            INSERT INTO sponsors (kvk, name, name_normalized, fetched_at)
-            VALUES (:kvk, :name, :name_normalized, :fetched_at)
-            ON CONFLICT(kvk) DO UPDATE SET
-                name=excluded.name,
-                name_normalized=excluded.name_normalized,
-                fetched_at=excluded.fetched_at
+            INSERT INTO meta (key, value) VALUES ('ind_synced_at', %s)
+            ON CONFLICT (key) DO UPDATE SET value = excluded.value
             """,
-            [
-                {
-                    "kvk": row.kvk,
-                    "name": row.name,
-                    "name_normalized": row.name_normalized,
-                    "fetched_at": now,
-                }
-                for row in rows
-            ],
+            (now.isoformat(timespec="seconds"),),
         )
-        conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('ind_synced_at', ?)", (now,))
-        stored = conn.execute("SELECT COUNT(*) AS c FROM sponsors").fetchone()["c"]
-    return int(stored)
+        stored_row = conn.execute("SELECT COUNT(*) AS c FROM sponsors").fetchone()
+        assert stored_row is not None  # COUNT(*) always returns exactly one row
+    return int(stored_row["c"])
