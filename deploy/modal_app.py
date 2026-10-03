@@ -51,7 +51,11 @@ image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("tesseract-ocr", "poppler-utils")  # OCR fallback + pdf2image, same as local
     .uv_pip_install(*RUNTIME_DEPENDENCIES)
-    .add_local_python_source("jobfinder")
+    # add_local_python_source only copies .py files - the web UI's
+    # templates/ and static/ (non-Python package data) silently went
+    # missing with it, crash-looping every request on StaticFiles'
+    # eager directory check. add_local_dir copies the real directory tree.
+    .add_local_dir("src/jobfinder", remote_path="/root/jobfinder")
 )
 
 volume = modal.Volume.from_name("jobfinder-data", create_if_missing=True)
