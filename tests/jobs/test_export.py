@@ -20,6 +20,7 @@ SAMPLE_JOBS = [
         is_open_application=False,
         sponsor_kvk="31047344",
         fit_score=6.0,
+        experience_level="mid",
         fetched_at="2026-10-01T00:00:00",
     ),
     StoredJob(
@@ -32,6 +33,7 @@ SAMPLE_JOBS = [
         is_open_application=True,
         sponsor_kvk=None,
         fit_score=None,
+        experience_level=None,
         fetched_at="2026-10-01T00:00:00",
     ),
 ]

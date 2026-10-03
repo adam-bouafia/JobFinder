@@ -12,6 +12,7 @@ from pathlib import Path
 from ..db import cursor
 from ..paths import DB_PATH
 from ..sponsors.match import load_sponsor_choices, match_against_choices
+from .experience import classify_experience_level
 from .models import JobListing
 from .open_applications import is_open_application
 
@@ -48,8 +49,9 @@ def ingest_jobs(listings: list[JobListing], db_path: Path = DB_PATH) -> int:
                 """
                 INSERT OR IGNORE INTO jobs
                     (company_name, title, location, url, source,
-                     is_open_application, sponsor_kvk, sponsor_match_score, fetched_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     is_open_application, sponsor_kvk, sponsor_match_score,
+                     experience_level, fetched_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     listing.company_name,
@@ -60,6 +62,7 @@ def ingest_jobs(listings: list[JobListing], db_path: Path = DB_PATH) -> int:
                     int(is_open_application(listing.title)),
                     sponsor_kvk,
                     sponsor_score,
+                    classify_experience_level(listing.title),
                     now,
                 ),
             )
@@ -79,6 +82,7 @@ class StoredJob:
     is_open_application: bool
     sponsor_kvk: str | None
     fit_score: float | None
+    experience_level: str | None
     fetched_at: str
 
     @classmethod
@@ -93,6 +97,7 @@ class StoredJob:
             is_open_application=bool(row["is_open_application"]),
             sponsor_kvk=row["sponsor_kvk"],
             fit_score=row["fit_score"],
+            experience_level=row["experience_level"],
             fetched_at=row["fetched_at"],
         )
 
@@ -100,18 +105,31 @@ class StoredJob:
 def list_jobs(
     db_path: Path = DB_PATH,
     *,
+    query: str | None = None,
     sponsors_only: bool = False,
     open_applications_only: bool = False,
+    experience_level: str | None = None,
     min_fit_score: float | None = None,
     limit: int = 50,
 ) -> list[StoredJob]:
-    """Query stored jobs, ranked by fit score (nulls last)."""
+    """Query stored jobs, ranked by fit score (nulls last).
+
+    `query` is a plain substring match against title or company name - a
+    job search box, not the fuzzy sponsor matching used elsewhere.
+    """
     clauses: list[str] = []
     params: list[object] = []
+    if query:
+        clauses.append("(title LIKE ? OR company_name LIKE ?)")
+        like_query = f"%{query}%"
+        params.extend([like_query, like_query])
     if sponsors_only:
         clauses.append("sponsor_kvk IS NOT NULL")
     if open_applications_only:
         clauses.append("is_open_application = 1")
+    if experience_level:
+        clauses.append("experience_level = ?")
+        params.append(experience_level)
     if min_fit_score is not None:
         clauses.append("fit_score >= ?")
         params.append(min_fit_score)

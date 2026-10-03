@@ -126,3 +126,65 @@ def test_list_jobs_filters_by_sponsors_only(seeded_db: Path) -> None:
 
     assert len(jobs) == 1
     assert jobs[0].company_name == "Booking.com"
+
+
+def test_ingest_jobs_classifies_experience_level(seeded_db: Path) -> None:
+    ingest_jobs(
+        [
+            JobListing("Booking.com", "Junior Backend Engineer", None, "https://x/1", "test"),
+            JobListing("Booking.com", "Senior Backend Engineer", None, "https://x/2", "test"),
+            JobListing("Booking.com", "Backend Engineer", None, "https://x/3", "test"),
+        ],
+        db_path=seeded_db,
+    )
+
+    jobs = {job.url: job for job in list_jobs(db_path=seeded_db, limit=10)}
+
+    assert jobs["https://x/1"].experience_level == "junior"
+    assert jobs["https://x/2"].experience_level == "senior"
+    assert jobs["https://x/3"].experience_level == "mid"
+
+
+def test_list_jobs_filters_by_experience_level(seeded_db: Path) -> None:
+    ingest_jobs(
+        [
+            JobListing("Booking.com", "Junior Backend Engineer", None, "https://x/1", "test"),
+            JobListing("Booking.com", "Senior Backend Engineer", None, "https://x/2", "test"),
+        ],
+        db_path=seeded_db,
+    )
+
+    jobs = list_jobs(db_path=seeded_db, experience_level="junior")
+
+    assert len(jobs) == 1
+    assert jobs[0].title == "Junior Backend Engineer"
+
+
+def test_list_jobs_filters_by_free_text_query_on_title(seeded_db: Path) -> None:
+    ingest_jobs(
+        [
+            JobListing("Booking.com", "Platform Engineer", None, "https://x/1", "test"),
+            JobListing("Booking.com", "Data Analyst", None, "https://x/2", "test"),
+        ],
+        db_path=seeded_db,
+    )
+
+    jobs = list_jobs(db_path=seeded_db, query="platform")
+
+    assert len(jobs) == 1
+    assert jobs[0].title == "Platform Engineer"
+
+
+def test_list_jobs_filters_by_free_text_query_on_company_name(seeded_db: Path) -> None:
+    ingest_jobs(
+        [
+            JobListing("Booking.com", "Engineer", None, "https://x/1", "test"),
+            JobListing("Unrelated Co", "Engineer", None, "https://x/2", "test"),
+        ],
+        db_path=seeded_db,
+    )
+
+    jobs = list_jobs(db_path=seeded_db, query="booking")
+
+    assert len(jobs) == 1
+    assert jobs[0].company_name == "Booking.com"

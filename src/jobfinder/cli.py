@@ -126,15 +126,21 @@ def cmd_rescore_jobs() -> None:
 
 @app.command("list-jobs")
 def cmd_list_jobs(
+    query: str | None = typer.Option(None, "--query", help="Search title/company name."),
     sponsors_only: bool = typer.Option(False, help="Only IND-recognised-sponsor companies."),
     open_applications_only: bool = typer.Option(False, help="Only open/speculative postings."),
+    experience: str | None = typer.Option(
+        None, help="Filter by experience level: junior, mid, or senior."
+    ),
     min_fit: float | None = typer.Option(None, help="Minimum fit score."),
     limit: int = typer.Option(50, help="Max rows to show."),
 ) -> None:
     """List stored jobs, ranked by fit score."""
     jobs = list_jobs(
+        query=query,
         sponsors_only=sponsors_only,
         open_applications_only=open_applications_only,
+        experience_level=experience,
         min_fit_score=min_fit,
         limit=limit,
     )
@@ -144,24 +150,32 @@ def cmd_list_jobs(
     for job in jobs:
         sponsor_tag = "[green]sponsor[/green]" if job.sponsor_kvk else "[dim]unmatched[/dim]"
         open_app_tag = " [cyan]open-application[/cyan]" if job.is_open_application else ""
+        level_tag = f" [magenta]{job.experience_level}[/magenta]" if job.experience_level else ""
         fit = f"{job.fit_score:.1f}" if job.fit_score is not None else "?"
         console.print(
-            f"[{fit}] {job.company_name} - {job.title} ({sponsor_tag}){open_app_tag}\n    {job.url}"
+            f"[{fit}] {job.company_name} - {job.title} "
+            f"({sponsor_tag}){open_app_tag}{level_tag}\n    {job.url}"
         )
 
 
 @app.command("export-jobs")
 def cmd_export_jobs(
     path: Path = typer.Argument(..., help="Output file - .md, .txt, or .pdf."),
+    query: str | None = typer.Option(None, "--query", help="Search title/company name."),
     sponsors_only: bool = typer.Option(False, help="Only IND-recognised-sponsor companies."),
     open_applications_only: bool = typer.Option(False, help="Only open/speculative postings."),
+    experience: str | None = typer.Option(
+        None, help="Filter by experience level: junior, mid, or senior."
+    ),
     min_fit: float | None = typer.Option(None, help="Minimum fit score."),
     limit: int = typer.Option(200, help="Max rows to export."),
 ) -> None:
     """Export stored jobs to Markdown, text, or PDF - format from the extension."""
     jobs = list_jobs(
+        query=query,
         sponsors_only=sponsors_only,
         open_applications_only=open_applications_only,
+        experience_level=experience,
         min_fit_score=min_fit,
         limit=limit,
     )

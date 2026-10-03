@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from ..db import cursor
+from ..jobs.experience import classify_experience_level
 from ..paths import DB_PATH
 from ..resume.parse import latest_resume_profile
 
@@ -53,7 +54,9 @@ def score_job(
 
 def rescore_jobs(db_path: Path = DB_PATH, country: str = "NL") -> int:
     """Recompute fit_score for every stored job against the latest resume
-    profile (empty skill list if none has been parsed yet).
+    profile (empty skill list if none has been parsed yet). Also backfills
+    experience_level for any row ingested before that column existed -
+    cheap and deterministic, so recomputing it unconditionally is fine.
 
     Returns the number of rows updated.
     """
@@ -70,5 +73,8 @@ def rescore_jobs(db_path: Path = DB_PATH, country: str = "NL") -> int:
                 resume_skills=resume_skills,
                 country=country,
             )
-            conn.execute("UPDATE jobs SET fit_score = ? WHERE id = ?", (score, row["id"]))
+            conn.execute(
+                "UPDATE jobs SET fit_score = ?, experience_level = ? WHERE id = ?",
+                (score, classify_experience_level(row["title"]), row["id"]),
+            )
     return len(rows)

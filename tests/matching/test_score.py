@@ -76,3 +76,20 @@ def test_rescore_jobs_with_no_resume_still_credits_sponsor_status(tmp_path: Path
 
     jobs = list_jobs(db_path=db_path)
     assert jobs[0].fit_score == 5.0
+
+
+def test_rescore_jobs_backfills_experience_level_for_pre_migration_rows(tmp_path: Path) -> None:
+    db_path = tmp_path / "test.db"
+    with db.cursor(db_path) as conn:
+        # Simulate a row inserted before experience_level existed: insert
+        # directly, bypassing ingest_jobs (which always sets it now).
+        conn.execute(
+            "INSERT INTO jobs (company_name, title, url, source, fetched_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("Acme", "Senior Platform Engineer", "https://x/1", "test", "2026-10-01"),
+        )
+
+    rescore_jobs(db_path=db_path)
+
+    jobs = list_jobs(db_path=db_path)
+    assert jobs[0].experience_level == "senior"

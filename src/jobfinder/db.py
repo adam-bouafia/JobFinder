@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     sponsor_kvk          TEXT,
     sponsor_match_score  REAL,
     fit_score            REAL,
+    experience_level     TEXT,
     fetched_at           TEXT NOT NULL,
     UNIQUE(url)
 );
@@ -51,7 +52,21 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS idx_sponsors_normalized ON sponsors(name_normalized);
 CREATE INDEX IF NOT EXISTS idx_jobs_sponsor_kvk ON jobs(sponsor_kvk);
 CREATE INDEX IF NOT EXISTS idx_jobs_fit_score ON jobs(fit_score);
+CREATE INDEX IF NOT EXISTS idx_jobs_experience_level ON jobs(experience_level);
 """
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after a table's initial CREATE TABLE.
+
+    CREATE TABLE IF NOT EXISTS doesn't retroactively add new columns to an
+    already-existing table, so a real schema change (like adding
+    experience_level to an existing jobs table with live data in it) needs
+    an explicit, idempotent ALTER TABLE here.
+    """
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
+    if "experience_level" not in existing_columns:
+        conn.execute("ALTER TABLE jobs ADD COLUMN experience_level TEXT")
 
 
 def connect(path: Path = DB_PATH) -> sqlite3.Connection:
@@ -65,6 +80,7 @@ def connect(path: Path = DB_PATH) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
 
 
