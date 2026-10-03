@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlencode
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -23,7 +23,7 @@ from fastapi.templating import Jinja2Templates
 from .. import db
 from ..jobs import adzuna
 from ..jobs.export import to_markdown, to_pdf_bytes, to_text
-from ..jobs.ingest import StoredJob, ingest_jobs, list_jobs
+from ..jobs.ingest import StoredJob, count_jobs, ingest_jobs, list_jobs
 from ..matching.score import rescore_jobs
 from ..paths import DB_PATH, RESUME_DIR
 from ..resume.parse import latest_resume_profile, parse_resume
@@ -58,6 +58,7 @@ def create_app() -> FastAPI:
     def _search_jobs(
         db_path: Path,
         query: str,
+        city: str,
         sponsors_only: bool,
         open_applications_only: bool,
         experience: str,
@@ -65,25 +66,62 @@ def create_app() -> FastAPI:
         return list_jobs(
             db_path=db_path,
             query=query or None,
+            city=city or None,
             sponsors_only=sponsors_only,
             open_applications_only=open_applications_only,
             experience_level=experience or None,
             limit=100,
         )
 
+    def _count_jobs(
+        db_path: Path,
+        query: str,
+        city: str,
+        sponsors_only: bool,
+        open_applications_only: bool,
+        experience: str,
+    ) -> int:
+        return count_jobs(
+            db_path=db_path,
+            query=query or None,
+            city=city or None,
+            sponsors_only=sponsors_only,
+            open_applications_only=open_applications_only,
+            experience_level=experience or None,
+        )
+
+    def _pull_fresh_listings(db_path: Path, query: str, city: str) -> None:
+        """Best-effort: merge in live Adzuna results for `query` before
+        showing search results, so there's one search action instead of a
+        separate "search local" and "fetch new" step. Silently skipped if
+        Adzuna isn't configured or the request fails - a slow/missing
+        upstream should never break the local search that always works.
+        """
+        if not query:
+            return
+        try:
+            listings = adzuna.search(query, where=city or None)
+        except Exception:
+            return
+        ingest_jobs(listings, db_path=db_path)
+        rescore_jobs(db_path=db_path)
+
     @app.get("/", response_class=HTMLResponse)
     def index(
         request: Request,
         db_path: Annotated[Path, Depends(get_db_path)],
         query: str = Query(default=""),
+        city: str = Query(default=""),
         sponsors_only: bool = Query(default=False),
         open_applications_only: bool = Query(default=False),
         experience: str = Query(default=""),
-        fetched: int | None = Query(default=None),
+        uploaded: bool = Query(default=False),
         error: str = Query(default=""),
     ) -> HTMLResponse:
+        _pull_fresh_listings(db_path, query, city)
         stats = db.sponsor_stats(db_path)
-        jobs = _search_jobs(db_path, query, sponsors_only, open_applications_only, experience)
+        jobs = _search_jobs(db_path, query, city, sponsors_only, open_applications_only, experience)
+        total = _count_jobs(db_path, query, city, sponsors_only, open_applications_only, experience)
         resume_profile = latest_resume_profile(db_path)
         return templates.TemplateResponse(
             request,
@@ -91,11 +129,13 @@ def create_app() -> FastAPI:
             {
                 "stats": stats,
                 "jobs": jobs,
+                "total": total,
                 "query": query,
+                "city": city,
                 "sponsors_only": sponsors_only,
                 "open_applications_only": open_applications_only,
                 "experience": experience,
-                "fetched": fetched,
+                "uploaded": uploaded,
                 "error": error,
                 "resume_profile": resume_profile,
                 "active_nav": "home",
@@ -107,18 +147,24 @@ def create_app() -> FastAPI:
         request: Request,
         db_path: Annotated[Path, Depends(get_db_path)],
         query: str = Query(default=""),
+        city: str = Query(default=""),
         sponsors_only: bool = Query(default=False),
         open_applications_only: bool = Query(default=False),
         experience: str = Query(default=""),
     ) -> HTMLResponse:
-        """htmx partial: just the results fragment, for live search/filtering."""
-        jobs = _search_jobs(db_path, query, sponsors_only, open_applications_only, experience)
+        """htmx partial: just the results fragment, for live local filtering
+        as you type - no live Adzuna pull here, so it stays instant; that
+        only happens on an actual search submission (see index())."""
+        jobs = _search_jobs(db_path, query, city, sponsors_only, open_applications_only, experience)
+        total = _count_jobs(db_path, query, city, sponsors_only, open_applications_only, experience)
         return templates.TemplateResponse(
             request,
             "_job_results.html",
             {
                 "jobs": jobs,
+                "total": total,
                 "query": query,
+                "city": city,
                 "sponsors_only": sponsors_only,
                 "open_applications_only": open_applications_only,
                 "experience": experience,
@@ -132,20 +178,6 @@ def create_app() -> FastAPI:
             request, "company.html", {"stats": stats, "active_nav": "company"}
         )
 
-    @app.get("/resume", response_class=HTMLResponse)
-    def resume_page(
-        request: Request,
-        db_path: Annotated[Path, Depends(get_db_path)],
-        uploaded: bool = Query(default=False),
-        error: str = Query(default=""),
-    ) -> HTMLResponse:
-        profile = latest_resume_profile(db_path)
-        return templates.TemplateResponse(
-            request,
-            "resume.html",
-            {"profile": profile, "uploaded": uploaded, "error": error, "active_nav": "resume"},
-        )
-
     @app.post("/resume/upload")
     def upload_resume(
         db_path: Annotated[Path, Depends(get_db_path)],
@@ -156,7 +188,7 @@ def create_app() -> FastAPI:
         ).lower().endswith(".pdf")
         if not looks_like_pdf:
             params = urlencode({"error": "Only PDF resumes are supported."})
-            return RedirectResponse(url=f"/resume?{params}", status_code=303)
+            return RedirectResponse(url=f"/?{params}", status_code=303)
 
         RESUME_DIR.mkdir(parents=True, exist_ok=True)
         safe_name = _SAFE_FILENAME.sub("_", file.filename or "resume.pdf")
@@ -169,29 +201,10 @@ def create_app() -> FastAPI:
             params = urlencode(
                 {"error": "Could not read that PDF - is it a text or scanned resume?"}
             )
-            return RedirectResponse(url=f"/resume?{params}", status_code=303)
-        rescore_jobs(db_path=db_path)
-
-        return RedirectResponse(url="/resume?uploaded=true", status_code=303)
-
-    @app.post("/jobs/fetch")
-    def fetch_jobs(
-        db_path: Annotated[Path, Depends(get_db_path)],
-        query: str = Form(...),
-    ) -> RedirectResponse:
-        """Pulls fresh Adzuna listings for `query` straight from the UI -
-        the web equivalent of `jf search-jobs` + `jf rescore-jobs`."""
-        try:
-            listings = adzuna.search(query)
-        except adzuna.AdzunaCredentialsError:
-            params = urlencode(
-                {"error": "Adzuna credentials aren't configured on this deployment."}
-            )
             return RedirectResponse(url=f"/?{params}", status_code=303)
-        inserted = ingest_jobs(listings, db_path=db_path)
         rescore_jobs(db_path=db_path)
-        params = urlencode({"query": query, "fetched": inserted})
-        return RedirectResponse(url=f"/?{params}", status_code=303)
+
+        return RedirectResponse(url="/?uploaded=true", status_code=303)
 
     @app.get("/search", response_class=HTMLResponse)
     def search(
@@ -217,6 +230,7 @@ def create_app() -> FastAPI:
         db_path: Annotated[Path, Depends(get_db_path)],
         fmt: str = Query(default="md", alias="format"),
         query: str = Query(default=""),
+        city: str = Query(default=""),
         sponsors_only: bool = Query(default=False),
         open_applications_only: bool = Query(default=False),
         experience: str = Query(default=""),
@@ -227,6 +241,7 @@ def create_app() -> FastAPI:
         jobs = list_jobs(
             db_path=db_path,
             query=query or None,
+            city=city or None,
             sponsors_only=sponsors_only,
             open_applications_only=open_applications_only,
             experience_level=experience or None,

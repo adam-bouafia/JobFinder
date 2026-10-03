@@ -35,9 +35,14 @@ def _credentials() -> tuple[str, str]:
 
 
 def search(
-    query: str, country: str = "nl", results_per_page: int = 50, page: int = 1
+    query: str,
+    country: str = "nl",
+    where: str | None = None,
+    results_per_page: int = 50,
+    page: int = 1,
 ) -> list[JobListing]:
-    """Search Adzuna for `query` (e.g. "software engineer").
+    """Search Adzuna for `query` (e.g. "software engineer"), optionally
+    narrowed to a `where` location/city.
 
     Raises:
         AdzunaCredentialsError: if ADZUNA_APP_ID/ADZUNA_APP_KEY aren't set.
@@ -51,6 +56,8 @@ def search(
         "results_per_page": results_per_page,
         "content-type": "application/json",
     }
+    if where:
+        params["where"] = where
     response = httpx.get(url, params=params, headers={"User-Agent": USER_AGENT}, timeout=30)
     response.raise_for_status()
     return [_to_listing(item) for item in response.json().get("results", [])]

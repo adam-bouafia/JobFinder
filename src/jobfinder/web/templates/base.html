@@ -216,13 +216,6 @@
   }
   .site-footer a { text-decoration: none; }
   .site-footer a:hover { color: var(--fg); }
-  h2 {
-    font-size: 0.85rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    margin: 1.8rem 0 0.6rem;
-  }
-  ul { margin: 0; padding-left: 1.2rem; font-size: 0.9rem; }
   .banner {
     border: 1px solid var(--rule);
     padding: 0.6rem 0.9rem;
@@ -231,35 +224,48 @@
   }
   .banner.success { border-color: var(--fg); }
   .banner.error { border-color: var(--fg); color: var(--fg); }
-  .upload-form { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
-  .upload-form input[type=file] {
-    font-family: inherit;
-    font-size: 0.82rem;
-    color: var(--muted);
-    flex: 1;
-  }
-  .skills { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-  .skill-tag {
-    border: 1px solid var(--rule);
-    padding: 0.2rem 0.55rem;
-    font-size: 0.75rem;
-    letter-spacing: 0.03em;
-  }
-  .fetch-form {
+  .search-bar { display: flex; gap: 0.6rem; align-items: flex-start; }
+  .search-bar .search-form { flex: 1; margin-bottom: 0; }
+  .resume-upload-btn {
     display: flex;
-    gap: 0.6rem;
-    margin: 0.8rem 0 1.5rem;
-    font-size: 0.82rem;
+    align-items: center;
+    justify-content: center;
+    width: 2.6rem;
+    height: 2.6rem;
+    flex-shrink: 0;
+    border: 1px solid var(--rule);
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    cursor: pointer;
+    text-align: center;
+    line-height: 1.1;
   }
-  .fetch-form input[type=text] { font-size: 0.82rem; padding: 0.45rem 0.7rem; }
-  .fetch-form button { padding: 0.45rem 0.9rem; font-size: 0.72rem; }
+  .resume-upload-btn:hover { border-color: var(--fg); color: var(--fg); }
+  .resume-upload-btn input[type=file] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+  }
+  .city-input {
+    font-family: inherit;
+    font-size: 0.78rem;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--rule);
+    padding: 0.35rem 0.6rem;
+    width: 9rem;
+  }
+  .city-input:focus { outline: none; border-color: var(--fg); }
+  .resume-status { text-align: left; margin: -0.8rem 0 1.5rem; }
 </style>
 </head>
 <body>
 <nav>
   <a href="/" class="{{ 'active' if active_nav == 'home' else '' }}">Jobs</a>
   <a href="/company" class="{{ 'active' if active_nav == 'company' else '' }}">Check a Company</a>
-  <a href="/resume" class="{{ 'active' if active_nav == 'resume' else '' }}">Resume</a>
   <button id="theme-toggle" type="button">Theme</button>
 </nav>
 {% block content %}{% endblock %}

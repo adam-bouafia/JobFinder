@@ -228,10 +228,11 @@ def test_export_rejects_unknown_format(client_with_jobs: TestClient) -> None:
     assert response.status_code == 400
 
 
-def test_resume_page_with_no_resume_prompts_upload(client: TestClient) -> None:
-    response = client.get("/resume")
+def test_index_with_no_resume_has_upload_button_and_no_status_line(client: TestClient) -> None:
+    response = client.get("/")
     assert response.status_code == 200
-    assert "No resume uploaded yet" in response.text
+    assert "resume-upload-btn" in response.text
+    assert "Scoring against your resume" not in response.text
 
 
 def test_resume_upload_rejects_non_pdf(client: TestClient) -> None:
@@ -241,7 +242,7 @@ def test_resume_upload_rejects_non_pdf(client: TestClient) -> None:
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert response.headers["location"].startswith("/resume?error=")
+    assert response.headers["location"].startswith("/?error=")
 
 
 def test_resume_upload_parses_pdf_and_rescores_jobs(
@@ -256,37 +257,39 @@ def test_resume_upload_parses_pdf_and_rescores_jobs(
         follow_redirects=False,
     )
     assert upload.status_code == 303
-    assert upload.headers["location"] == "/resume?uploaded=true"
-
-    page = client_with_jobs.get("/resume")
-    assert "python" in page.text.lower()
+    assert upload.headers["location"] == "/?uploaded=true"
 
     index = client_with_jobs.get("/")
-    assert "uploaded resume" in index.text
+    assert "Scoring against your resume" in index.text
+    assert "python" in index.text.lower()
 
 
-def test_jobs_fetch_without_credentials_redirects_with_error(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+def test_search_without_adzuna_credentials_still_shows_local_results(
+    client_with_jobs: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("ADZUNA_APP_ID", raising=False)
     monkeypatch.delenv("ADZUNA_APP_KEY", raising=False)
 
-    response = client.post("/jobs/fetch", data={"query": "engineer"}, follow_redirects=False)
+    response = client_with_jobs.get("/", params={"query": "backend"})
 
-    assert response.status_code == 303
-    assert response.headers["location"].startswith("/?error=")
+    assert response.status_code == 200
+    assert "Senior Backend Engineer" in response.text
 
 
-def test_jobs_fetch_ingests_new_listings(
+def test_search_merges_in_fresh_adzuna_listings(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake_listing = JobListing("Acme", "Platform Engineer", "Amsterdam", "https://x/9", "adzuna")
     monkeypatch.setattr(adzuna, "search", lambda query, **kwargs: [fake_listing])
 
-    response = client.post("/jobs/fetch", data={"query": "platform"}, follow_redirects=False)
+    response = client.get("/", params={"query": "platform"})
 
-    assert response.status_code == 303
-    assert "fetched=1" in response.headers["location"]
+    assert response.status_code == 200
+    assert "Platform Engineer" in response.text
 
-    index = client.get("/")
-    assert "Platform Engineer" in index.text
+
+def test_results_partial_filters_by_city(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/results", params={"city": "Amsterdam"})
+    assert response.status_code == 200
+    assert "Senior Backend Engineer" in response.text
+    assert "General Application" not in response.text

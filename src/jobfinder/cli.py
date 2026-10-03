@@ -101,6 +101,7 @@ def cmd_fetch_jobs(
 @app.command("search-jobs")
 def cmd_search_jobs(
     query: str = typer.Option(..., "--query", help="Search text, e.g. 'software engineer'."),
+    city: str | None = typer.Option(None, help="Narrow to a location, e.g. 'Amsterdam'."),
     country: str = typer.Option("nl", help="Adzuna country code."),
 ) -> None:
     """Search Adzuna and store the results.
@@ -109,7 +110,7 @@ def cmd_search_jobs(
     set ADZUNA_APP_ID / ADZUNA_APP_KEY.
     """
     try:
-        listings = jobs_adzuna.search(query, country=country)
+        listings = jobs_adzuna.search(query, country=country, where=city)
     except jobs_adzuna.AdzunaCredentialsError as error:
         console.print(f"[red]{error}[/red]")
         raise typer.Exit(code=1) from error
@@ -127,6 +128,7 @@ def cmd_rescore_jobs() -> None:
 @app.command("list-jobs")
 def cmd_list_jobs(
     query: str | None = typer.Option(None, "--query", help="Search title/company name."),
+    city: str | None = typer.Option(None, help="Filter by location, e.g. 'Amsterdam'."),
     sponsors_only: bool = typer.Option(False, help="Only IND-recognised-sponsor companies."),
     open_applications_only: bool = typer.Option(False, help="Only open/speculative postings."),
     experience: str | None = typer.Option(
@@ -138,6 +140,7 @@ def cmd_list_jobs(
     """List stored jobs, ranked by fit score."""
     jobs = list_jobs(
         query=query,
+        city=city,
         sponsors_only=sponsors_only,
         open_applications_only=open_applications_only,
         experience_level=experience,
@@ -162,6 +165,7 @@ def cmd_list_jobs(
 def cmd_export_jobs(
     path: Path = typer.Argument(..., help="Output file - .md, .txt, or .pdf."),
     query: str | None = typer.Option(None, "--query", help="Search title/company name."),
+    city: str | None = typer.Option(None, help="Filter by location, e.g. 'Amsterdam'."),
     sponsors_only: bool = typer.Option(False, help="Only IND-recognised-sponsor companies."),
     open_applications_only: bool = typer.Option(False, help="Only open/speculative postings."),
     experience: str | None = typer.Option(
@@ -173,6 +177,7 @@ def cmd_export_jobs(
     """Export stored jobs to Markdown, text, or PDF - format from the extension."""
     jobs = list_jobs(
         query=query,
+        city=city,
         sponsors_only=sponsors_only,
         open_applications_only=open_applications_only,
         experience_level=experience,

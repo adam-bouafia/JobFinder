@@ -105,27 +105,23 @@ class StoredJob:
         )
 
 
-def list_jobs(
-    db_path: Path = DB_PATH,
-    *,
-    query: str | None = None,
-    sponsors_only: bool = False,
-    open_applications_only: bool = False,
-    experience_level: str | None = None,
-    min_fit_score: float | None = None,
-    limit: int = 50,
-) -> list[StoredJob]:
-    """Query stored jobs, ranked by fit score (nulls last).
-
-    `query` is a plain substring match against title or company name - a
-    job search box, not the fuzzy sponsor matching used elsewhere.
-    """
+def _build_where(
+    query: str | None,
+    sponsors_only: bool,
+    open_applications_only: bool,
+    experience_level: str | None,
+    min_fit_score: float | None,
+    city: str | None,
+) -> tuple[str, list[object]]:
     clauses: list[str] = []
     params: list[object] = []
     if query:
         clauses.append("(title LIKE ? OR company_name LIKE ?)")
         like_query = f"%{query}%"
         params.extend([like_query, like_query])
+    if city:
+        clauses.append("location LIKE ?")
+        params.append(f"%{city}%")
     if sponsors_only:
         clauses.append("sponsor_kvk IS NOT NULL")
     if open_applications_only:
@@ -136,9 +132,31 @@ def list_jobs(
     if min_fit_score is not None:
         clauses.append("fit_score >= ?")
         params.append(min_fit_score)
-
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    params.append(limit)
+    return where, params
+
+
+def list_jobs(
+    db_path: Path = DB_PATH,
+    *,
+    query: str | None = None,
+    city: str | None = None,
+    sponsors_only: bool = False,
+    open_applications_only: bool = False,
+    experience_level: str | None = None,
+    min_fit_score: float | None = None,
+    limit: int = 50,
+) -> list[StoredJob]:
+    """Query stored jobs, ranked by fit score (nulls last).
+
+    `query` is a plain substring match against title or company name, and
+    `city` against location - a job search box, not the fuzzy sponsor
+    matching used elsewhere.
+    """
+    where, params = _build_where(
+        query, sponsors_only, open_applications_only, experience_level, min_fit_score, city
+    )
+    params = [*params, limit]
 
     with cursor(db_path) as conn:
         rows = conn.execute(
@@ -151,3 +169,24 @@ def list_jobs(
             params,
         ).fetchall()
     return [StoredJob.from_row(row) for row in rows]
+
+
+def count_jobs(
+    db_path: Path = DB_PATH,
+    *,
+    query: str | None = None,
+    city: str | None = None,
+    sponsors_only: bool = False,
+    open_applications_only: bool = False,
+    experience_level: str | None = None,
+    min_fit_score: float | None = None,
+) -> int:
+    """Total matching rows, ignoring `list_jobs`'s display limit - so the
+    UI can show "showing 100 of 240" instead of a count capped at the page
+    size."""
+    where, params = _build_where(
+        query, sponsors_only, open_applications_only, experience_level, min_fit_score, city
+    )
+    with cursor(db_path) as conn:
+        row = conn.execute(f"SELECT COUNT(*) AS c FROM jobs {where}", params).fetchone()
+    return int(row["c"])

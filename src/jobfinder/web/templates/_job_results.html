@@ -1,6 +1,10 @@
-{% set filter_qs = "query=" ~ (query|default("")|urlencode) ~ "&sponsors_only=" ~ ('true' if sponsors_only else 'false') ~ "&open_applications_only=" ~ ('true' if open_applications_only else 'false') ~ "&experience=" ~ (experience|default("")) %}
+{% set filter_qs = "query=" ~ (query|default("")|urlencode) ~ "&city=" ~ (city|default("")|urlencode) ~ "&sponsors_only=" ~ ('true' if sponsors_only else 'false') ~ "&open_applications_only=" ~ ('true' if open_applications_only else 'false') ~ "&experience=" ~ (experience|default("")) %}
 <p class="meta export-links">
-  {{ jobs|length }} job{{ '' if jobs|length == 1 else 's' }} found.
+  {% if total is defined and total > jobs|length %}
+    Showing {{ jobs|length }} of {{ total }} jobs found.
+  {% else %}
+    {{ jobs|length }} job{{ '' if jobs|length == 1 else 's' }} found.
+  {% endif %}
   {% if jobs %}
   Export:
   <a href="/export?format=md&{{ filter_qs }}">Markdown</a>
@@ -41,5 +45,5 @@
   {% endfor %}
 </div>
 {% else %}
-<p class="meta">No jobs match. Try a different search, clear the filters, or fetch new roles above.</p>
+<p class="meta">No jobs match. Try a different search or clear the filters - searching also pulls in fresh listings.</p>
 {% endif %}

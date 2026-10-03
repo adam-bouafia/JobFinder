@@ -7,53 +7,67 @@
   {% else %}
     No sponsor data yet &mdash; run <code>jf sync-sponsors</code> first
   {% endif %}
-  &middot;
-  {% if resume_profile %}
-    scoring against your <a href="/resume">uploaded resume</a>
-    ({{ resume_profile.skills|length }} skills detected)
-  {% else %}
-    <a href="/resume">upload a resume</a> to score jobs against your skills
-  {% endif %}
 </p>
 
-{% if fetched is not none %}
-<p class="banner success">Fetched {{ fetched }} new role{{ '' if fetched == 1 else 's' }} from Adzuna.</p>
+{% if uploaded %}
+<p class="banner success">Resume parsed and job scores refreshed.</p>
 {% endif %}
 {% if error %}
 <p class="banner error">{{ error }}</p>
 {% endif %}
 
-<form action="/jobs/fetch" method="post" class="fetch-form">
-  <input type="text" name="query" placeholder="e.g. &quot;platform engineer&quot;" autocomplete="off" required>
-  <button type="submit">Fetch new roles</button>
-</form>
+<div class="search-bar">
+  <form action="/resume/upload" method="post" enctype="multipart/form-data">
+    <label class="resume-upload-btn" title="Upload your resume to score jobs against your skills">
+      &uarr;
+      <input type="file" name="file" accept="application/pdf,.pdf" onchange="this.form.submit()">
+    </label>
+  </form>
 
-<form
-  hx-get="/results"
-  hx-target="#results"
-  hx-trigger="submit, keyup changed delay:400ms from:input[type=text], change from:input[type=checkbox], change from:select"
->
-  <div class="search-row">
-    <input type="text" name="query" value="{{ query }}" placeholder="Search job title or company" autocomplete="off" autofocus>
-    <button type="submit">Search</button>
-  </div>
-  <div class="filters">
-    <label>
-      <input type="checkbox" name="sponsors_only" value="true" {{ 'checked' if sponsors_only }}>
-      IND sponsors only
-    </label>
-    <label>
-      <input type="checkbox" name="open_applications_only" value="true" {{ 'checked' if open_applications_only }}>
-      Open applications
-    </label>
-    <select name="experience">
-      <option value="" {{ 'selected' if not experience }}>Any experience</option>
-      <option value="junior" {{ 'selected' if experience == 'junior' }}>Junior</option>
-      <option value="mid" {{ 'selected' if experience == 'mid' }}>Mid</option>
-      <option value="senior" {{ 'selected' if experience == 'senior' }}>Senior</option>
-    </select>
-  </div>
-</form>
+  {# One form: typing/toggling filters live-refreshes #results via htmx
+     against what's already stored (instant, no network call to Adzuna);
+     pressing Enter or clicking Search is a plain, un-enhanced GET to /,
+     which also pulls in fresh Adzuna results for `query` before showing
+     results - one search action, not a separate "search" and "fetch". #}
+  <form
+    action="/"
+    method="get"
+    class="search-form"
+    hx-get="/results"
+    hx-target="#results"
+    hx-trigger="keyup changed delay:400ms from:input[type=text], change from:input[type=checkbox], change from:select"
+  >
+    <div class="search-row">
+      <input type="text" name="query" value="{{ query }}" placeholder="Search job title or company" autocomplete="off" autofocus>
+      <button type="submit">Search</button>
+    </div>
+    <div class="filters">
+      <input type="text" name="city" value="{{ city }}" placeholder="City (e.g. Amsterdam)" autocomplete="off" class="city-input">
+      <label>
+        <input type="checkbox" name="sponsors_only" value="true" {{ 'checked' if sponsors_only }}>
+        IND sponsors only
+      </label>
+      <label>
+        <input type="checkbox" name="open_applications_only" value="true" {{ 'checked' if open_applications_only }}>
+        Open applications
+      </label>
+      <select name="experience">
+        <option value="" {{ 'selected' if not experience }}>Any experience</option>
+        <option value="junior" {{ 'selected' if experience == 'junior' }}>Junior</option>
+        <option value="mid" {{ 'selected' if experience == 'mid' }}>Mid</option>
+        <option value="senior" {{ 'selected' if experience == 'senior' }}>Senior</option>
+      </select>
+    </div>
+  </form>
+</div>
+
+{% if resume_profile %}
+<p class="meta resume-status">
+  Scoring against your resume: {{ resume_profile.skills|length }} skill{{ '' if resume_profile.skills|length == 1 else 's' }} detected
+  {% if resume_profile.skills %}&mdash; {{ resume_profile.skills|join(", ") }}{% endif %}
+  &middot; upload again any time to refresh
+</p>
+{% endif %}
 
 <div id="results">
   {% include "_job_results.html" %}
