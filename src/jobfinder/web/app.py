@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 
 from .. import db
 from ..jobs.export import to_markdown, to_pdf_bytes, to_text
-from ..jobs.ingest import StoredJob, count_jobs, list_jobs
+from ..jobs.ingest import StoredJob, count_jobs, list_jobs, reindex_all_jobs
 from ..matching.score import rescore_jobs
 from ..paths import RESUME_DIR
 from ..resume.parse import latest_resume_profile, parse_resume
@@ -80,6 +80,14 @@ def create_app() -> FastAPI:
                 limit=100,
             )
         except Exception:
+            # Self-heal: a self-hosted Meilisearch with no persistent
+            # storage loses its index on every container restart (see
+            # deploy/modal_app.py) - confirmed live that it can then sit
+            # silently empty indefinitely, since this fallback is
+            # deliberately quiet. Push everything back in now so the
+            # *next* search is back on the real index, not just this one
+            # falling back. reindex_all_jobs() never raises.
+            reindex_all_jobs(dsn)
             jobs = list_jobs(
                 dsn=dsn,
                 query=query or None,

@@ -51,6 +51,30 @@ def _reindex_by_url(conn: Any, urls: list[str]) -> None:
         print(f"[search index] skipped: {error}")
 
 
+def reindex_all_jobs(dsn: str | None = None) -> int:
+    """Push every stored job into the search index. Used by rescore_jobs()
+    (every rescore reindexes everything anyway) and as a self-heal: a
+    self-hosted Meilisearch with no persistent storage loses its index on
+    every container restart (see deploy/modal_app.py) - confirmed live
+    that this can then sit silently empty indefinitely, since the web
+    app's fallback to Postgres is deliberately quiet. web/app.py calls
+    this once whenever a search actually hits that fallback, so the
+    *next* search is back on the real index instead of staying degraded
+    until someone happens to upload a resume or run `seed_jobs`.
+
+    Returns the number of rows reindexed. Does not raise - same
+    best-effort contract as _reindex_by_url.
+    """
+    try:
+        with cursor(dsn) as conn:
+            rows = conn.execute("SELECT * FROM jobs").fetchall()
+            meilisearch_client.index_jobs([to_search_doc(row) for row in rows])
+        return len(rows)
+    except Exception as error:  # noqa: BLE001 - deliberately broad, see docstring
+        print(f"[search index] reindex skipped: {error}")
+        return 0
+
+
 def ingest_jobs(listings: list[JobListing], dsn: str | None = None) -> int:
     """Store listings, enriching each with sponsor-match status and an
     open-application flag.
@@ -152,9 +176,18 @@ def _build_where(
     clauses: list[str] = []
     params: list[object] = []
     if query:
-        clauses.append("(title ILIKE %s OR company_name ILIKE %s)")
-        like_query = f"%{query}%"
-        params.extend([like_query, like_query])
+        # Each word must appear somewhere in title/company, not
+        # necessarily adjacent - matching a single "%query%" phrase
+        # missed "Client Platform Security Engineer" for a search of
+        # "Platform engineer" (an extra word breaks a phrase substring),
+        # confirmed live. This is also only ever the *fallback* path now
+        # (see web/app.py) - the real search box goes through Meilisearch,
+        # which already tokenizes correctly; this just needs to not be
+        # wrong on the rare request that lands here instead.
+        for word in query.split():
+            clauses.append("(title ILIKE %s OR company_name ILIKE %s)")
+            like_word = f"%{word}%"
+            params.extend([like_word, like_word])
     if city:
         clauses.append("location ILIKE %s")
         params.append(f"%{city}%")

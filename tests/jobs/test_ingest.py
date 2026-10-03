@@ -5,8 +5,9 @@ from __future__ import annotations
 import pytest
 
 from jobfinder import db
-from jobfinder.jobs.ingest import ingest_jobs, list_jobs
+from jobfinder.jobs.ingest import ingest_jobs, list_jobs, reindex_all_jobs
 from jobfinder.jobs.models import JobListing
+from jobfinder.search import meilisearch_client
 from jobfinder.sponsors.normalize import normalize
 
 
@@ -184,3 +185,45 @@ def test_list_jobs_filters_by_free_text_query_on_company_name(seeded_db: str) ->
 
     assert len(jobs) == 1
     assert jobs[0].company_name == "Booking.com"
+
+
+def test_reindex_all_jobs_pushes_every_row_into_the_default_index(
+    seeded_db: str, meilisearch_env: tuple[str, str]
+) -> None:
+    """reindex_all_jobs() is the self-heal path web/app.py calls when the
+    search index has gone missing (see its docstring) - it always targets
+    the one real default index, not a test-isolated one, so this test
+    cleans that index up itself afterward."""
+    ingest_jobs(
+        [JobListing("Booking.com", "Senior Backend Engineer", None, "https://x/1", "test")],
+        dsn=seeded_db,
+    )
+    try:
+        count = reindex_all_jobs(seeded_db)
+
+        assert count == 1
+        hits, total = meilisearch_client.search_jobs(query="backend")
+        assert total == 1
+        assert hits[0]["title"] == "Senior Backend Engineer"
+    finally:
+        meilisearch_client.delete_index()
+
+
+def test_list_jobs_multi_word_query_matches_words_out_of_order(seeded_db: str) -> None:
+    """Regression: a single "%Platform engineer%" phrase substring missed
+    "Client Platform Security Engineer" for a search of "Platform
+    engineer" (an extra word between them breaks a phrase match) -
+    confirmed live against the deployed site. Each word must match
+    somewhere in title/company independently."""
+    ingest_jobs(
+        [
+            JobListing("Acme", "Client Platform Security Engineer", None, "https://x/1", "test"),
+            JobListing("Acme", "Data Analyst", None, "https://x/2", "test"),
+        ],
+        dsn=seeded_db,
+    )
+
+    jobs = list_jobs(dsn=seeded_db, query="Platform engineer")
+
+    assert len(jobs) == 1
+    assert jobs[0].title == "Client Platform Security Engineer"
