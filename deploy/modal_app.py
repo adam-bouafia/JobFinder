@@ -21,12 +21,14 @@ scale-to-zero on idle naturally does this for a low-traffic personal
 tool; not worth the complexity of reload-per-request for once-a-month
 freshness).
 
-Job search (Adzuna) runs here too, via `seed_jobs` - it reads the
-`jobfinder-adzuna` Modal Secret (ADZUNA_APP_ID/ADZUNA_APP_KEY) and writes
-into this same volume. Run it once manually after a fresh volume (see
-deploy/README.md); it isn't scheduled, since `sync_sponsors` already
-covers the once-a-month cadence this tool actually needs and repeated
-Adzuna calls would just re-fetch mostly the same postings.
+Job search (Adzuna) runs here too, via `seed_jobs` and via the web UI's
+own "Fetch new roles" form - both read the `jobfinder-adzuna` Modal
+Secret (ADZUNA_APP_ID/ADZUNA_APP_KEY) and write into this same volume.
+Run `seed_jobs` once manually after a fresh volume (see deploy/README.md);
+it isn't scheduled on its own, since `sync_sponsors` already covers the
+once-a-month cadence this tool actually needs and repeated Adzuna calls
+would just re-fetch mostly the same postings - the web form covers
+on-demand top-ups instead.
 """
 
 from __future__ import annotations
@@ -81,6 +83,7 @@ DATA_MOUNT = "/data"
 @app.function(
     image=image,
     volumes={DATA_MOUNT: volume},
+    secrets=[modal.Secret.from_name("jobfinder-adzuna")],
     max_containers=1,
     timeout=60,
 )
