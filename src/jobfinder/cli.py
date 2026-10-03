@@ -7,6 +7,11 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from .jobs import adzuna as jobs_adzuna
+from .jobs.ats import ATS_FETCHERS
+from .jobs.ats import fetch as ats_fetch
+from .jobs.ingest import ingest_jobs, list_jobs
+from .matching.score import rescore_jobs
 from .resume.parse import parse_resume
 from .sponsors import export as sponsors_export
 from .sponsors import scrape as sponsors_scrape
@@ -60,6 +65,81 @@ def cmd_parse_resume(
             console.print(f"  - {line}")
     else:
         console.print("Education: (none detected)")
+
+
+@app.command("fetch-jobs")
+def cmd_fetch_jobs(
+    source: str = typer.Option(
+        ..., "--source", help=f"ATS to fetch from: {', '.join(ATS_FETCHERS)}."
+    ),
+    slug: str = typer.Option(..., "--slug", help="Company's slug on that ATS."),
+) -> None:
+    """Fetch a company's open roles from a direct ATS endpoint and store them.
+
+    No automatic discovery of which company uses which ATS/slug (that
+    would need scraping career pages to find out, not done here) - pass a
+    slug you already know, e.g. from a company's careers page URL.
+    """
+    if source not in ATS_FETCHERS:
+        console.print(f"[red]Unknown source[/red]. Choose from: {', '.join(ATS_FETCHERS)}")
+        raise typer.Exit(code=1)
+    listings = ats_fetch(source, slug)
+    inserted = ingest_jobs(listings)
+    console.print(
+        f"[green]Fetched {len(listings)} roles from {source}:{slug}, {inserted} new.[/green]"
+    )
+
+
+@app.command("search-jobs")
+def cmd_search_jobs(
+    query: str = typer.Option(..., "--query", help="Search text, e.g. 'software engineer'."),
+    country: str = typer.Option("nl", help="Adzuna country code."),
+) -> None:
+    """Search Adzuna and store the results.
+
+    Needs free credentials: sign up at https://developer.adzuna.com/ and
+    set ADZUNA_APP_ID / ADZUNA_APP_KEY.
+    """
+    try:
+        listings = jobs_adzuna.search(query, country=country)
+    except jobs_adzuna.AdzunaCredentialsError as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(code=1) from error
+    inserted = ingest_jobs(listings)
+    console.print(f"[green]Found {len(listings)} roles, {inserted} new.[/green]")
+
+
+@app.command("rescore-jobs")
+def cmd_rescore_jobs() -> None:
+    """Recompute every stored job's fit score against the latest parsed resume."""
+    count = rescore_jobs()
+    console.print(f"[green]Rescored {count} jobs.[/green]")
+
+
+@app.command("list-jobs")
+def cmd_list_jobs(
+    sponsors_only: bool = typer.Option(False, help="Only IND-recognised-sponsor companies."),
+    open_applications_only: bool = typer.Option(False, help="Only open/speculative postings."),
+    min_fit: float | None = typer.Option(None, help="Minimum fit score."),
+    limit: int = typer.Option(50, help="Max rows to show."),
+) -> None:
+    """List stored jobs, ranked by fit score."""
+    jobs = list_jobs(
+        sponsors_only=sponsors_only,
+        open_applications_only=open_applications_only,
+        min_fit_score=min_fit,
+        limit=limit,
+    )
+    if not jobs:
+        console.print("[yellow]No jobs match.[/yellow]")
+        return
+    for job in jobs:
+        sponsor_tag = "[green]sponsor[/green]" if job.sponsor_kvk else "[dim]unmatched[/dim]"
+        open_app_tag = " [cyan]open-application[/cyan]" if job.is_open_application else ""
+        fit = f"{job.fit_score:.1f}" if job.fit_score is not None else "?"
+        console.print(
+            f"[{fit}] {job.company_name} - {job.title} ({sponsor_tag}){open_app_tag}\n    {job.url}"
+        )
 
 
 @app.command("serve")

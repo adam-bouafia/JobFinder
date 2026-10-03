@@ -33,7 +33,24 @@ CREATE TABLE IF NOT EXISTS resume_profile (
     parsed_at        TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS jobs (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    company_name         TEXT NOT NULL,
+    title                TEXT NOT NULL,
+    location             TEXT,
+    url                  TEXT NOT NULL,
+    source               TEXT NOT NULL,
+    is_open_application  INTEGER NOT NULL DEFAULT 0,
+    sponsor_kvk          TEXT,
+    sponsor_match_score  REAL,
+    fit_score            REAL,
+    fetched_at           TEXT NOT NULL,
+    UNIQUE(url)
+);
+
 CREATE INDEX IF NOT EXISTS idx_sponsors_normalized ON sponsors(name_normalized);
+CREATE INDEX IF NOT EXISTS idx_jobs_sponsor_kvk ON jobs(sponsor_kvk);
+CREATE INDEX IF NOT EXISTS idx_jobs_fit_score ON jobs(fit_score);
 """
 
 

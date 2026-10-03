@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from rapidfuzz import fuzz, process
 from ..db import cursor
 from ..paths import DB_PATH
 from .normalize import normalize
+
+SponsorChoices = dict[str, sqlite3.Row]
 
 
 @dataclass(frozen=True)
@@ -20,8 +23,20 @@ class MatchResult:
     score: float
 
 
-def match_company(name: str, threshold: float = 90.0, db_path: Path = DB_PATH) -> MatchResult:
-    """Check whether `name` matches a recognised sponsor.
+def load_sponsor_choices(db_path: Path = DB_PATH) -> SponsorChoices:
+    """Load the sponsor table once, for matching many names without
+    re-querying/re-scanning per name (see jobs/ingest.py)."""
+    with cursor(db_path) as conn:
+        rows = conn.execute("SELECT kvk, name, name_normalized FROM sponsors").fetchall()
+    if not rows:
+        raise RuntimeError("Sponsor table is empty; run `jf sync-sponsors` first.")
+    return {row["name_normalized"]: row for row in rows}
+
+
+def match_against_choices(
+    name: str, choices: SponsorChoices, threshold: float = 90.0
+) -> MatchResult:
+    """Check whether `name` matches a recognised sponsor in `choices`.
 
     Why token_set_ratio, not WRatio: verified live against this register
     that WRatio gives a dangerous flat ~90.0 to *any* short query against a
@@ -40,18 +55,8 @@ def match_company(name: str, threshold: float = 90.0, db_path: Path = DB_PATH) -
     vs. long multi-word names). 90 keeps a wide safety margin against false
     positives, at the cost of not auto-correcting heavier typos -- an
     acceptable trade for a tool whose answer people may act on.
-
-    Raises:
-        RuntimeError: if the sponsors table is empty (sync hasn't run yet).
     """
     query = normalize(name)
-    with cursor(db_path) as conn:
-        rows = conn.execute("SELECT kvk, name, name_normalized FROM sponsors").fetchall()
-
-    if not rows:
-        raise RuntimeError("Sponsor table is empty; run `jf sync-sponsors` first.")
-
-    choices = {row["name_normalized"]: row for row in rows}
     best = process.extractOne(query, choices.keys(), scorer=fuzz.token_set_ratio)
     if best is None or best[1] < threshold:
         return MatchResult(
@@ -61,3 +66,17 @@ def match_company(name: str, threshold: float = 90.0, db_path: Path = DB_PATH) -
     matched_normalized, score, _ = best
     row = choices[matched_normalized]
     return MatchResult(is_sponsor=True, matched_name=row["name"], kvk=row["kvk"], score=score)
+
+
+def match_company(name: str, threshold: float = 90.0, db_path: Path = DB_PATH) -> MatchResult:
+    """Check whether `name` matches a recognised sponsor.
+
+    One-shot convenience wrapper around load_sponsor_choices +
+    match_against_choices, for a single ad-hoc lookup (CLI, web UI). For
+    matching many names in a batch, load the choices once instead.
+
+    Raises:
+        RuntimeError: if the sponsors table is empty (sync hasn't run yet).
+    """
+    choices = load_sponsor_choices(db_path)
+    return match_against_choices(name, choices, threshold)
