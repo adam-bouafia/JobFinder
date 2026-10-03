@@ -18,6 +18,10 @@ data/*.db-*
 .env
 jobfinder.local.toml
 
-# Extension (not built yet)
+# Claude Code project instructions - kept local, not in the repo
+CLAUDE.md
+
+# Extension
 extension/node_modules/
 extension/dist/
+extension/src/data/sponsors.json
