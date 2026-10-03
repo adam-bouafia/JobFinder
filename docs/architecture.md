@@ -111,7 +111,25 @@ flowchart TB
     PAGE --> CONTENT --> MATCHERTS
     BUNDLE --> MATCHERTS
     MATCHERTS --> OVERLAY -->|renders on| PAGE
+
+    classDef source fill:#eceff1,stroke:#607d8b,stroke-width:1.5px,color:#263238
+    classDef core fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
+    classDef webui fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    classDef extension fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+    classDef enhancement fill:#fff8e1,stroke:#f9a825,stroke-width:1.5px,stroke-dasharray:3 3,color:#e65100
+    classDef planned fill:#fafafa,stroke:#bdbdbd,stroke-width:1px,stroke-dasharray:4 3,color:#9e9e9e
+
+    class IND,PAGE source
+    class ADZUNA,ATSSRC,JOBS,RESUME,SCORE planned
+    class SCRAPE,NORM,MATCH,EXPORT,DB,CLI,WEBAPP core
+    class DI,LLM enhancement
+    class BUNDLE,CONTENT,MATCHERTS,OVERLAY extension
+    class TEMPLATES webui
 ```
+
+Blue = built, purple = the Chrome extension (built), green = the web UI
+(built), amber dashed = optional opt-in enhancement, gray dashed = planned
+but not built yet.
 
 ## Sponsor registry sync
 
@@ -131,6 +149,16 @@ flowchart LR
     DB --> MATCH --> CLIOUT
     DB --> SNAP --> EXTBUNDLE
     SCHED --> SCRAPE
+
+    classDef source fill:#eceff1,stroke:#607d8b,stroke-width:1.5px,color:#263238
+    classDef core fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
+    classDef extension fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+    classDef infra fill:#fff8e1,stroke:#f9a825,stroke-width:1.5px,color:#e65100
+
+    class SRC source
+    class SCRAPE,NORM,DB,MATCH,CLIOUT,SNAP core
+    class EXTBUNDLE extension
+    class SCHED infra
 ```
 
 Note: the IND page has been seen listing the same KVK number twice; the
