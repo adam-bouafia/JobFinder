@@ -43,9 +43,38 @@
   .result .detail { color: #555; font-size: 0.85rem; margin-top: 0.2rem; }
   footer { margin-top: 3rem; color: #9a9a9a; font-size: 0.8rem; }
   a { color: inherit; }
+  nav { display: flex; gap: 1rem; margin-bottom: 1.5rem; font-size: 0.9rem; }
+  nav a { text-decoration: none; color: #6b6b6b; }
+  nav a.active { color: #1a1a1a; font-weight: 600; }
+  .filters { display: flex; gap: 1rem; margin-bottom: 1.2rem; font-size: 0.9rem; flex-wrap: wrap; }
+  .filters label { display: flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+  .job-list { display: flex; flex-direction: column; gap: 0.6rem; }
+  .job-card {
+    padding: 0.8rem 1rem;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+  }
+  .job-card .title { font-weight: 600; }
+  .job-card .company { color: #555; }
+  .job-card .tags { margin-top: 0.3rem; display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .tag {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .tag.sponsor { background: #e6f4ea; color: #1e7e34; }
+  .tag.open-app { background: #e8f0fe; color: #1a56db; }
+  .tag.fit { background: #f1f1f1; color: #444; }
+  .job-card a.link { font-size: 0.85rem; }
 </style>
 </head>
 <body>
+<nav>
+  <a href="/" class="{{ 'active' if active_nav == 'home' else '' }}">Sponsor Check</a>
+  <a href="/jobs" class="{{ 'active' if active_nav == 'jobs' else '' }}">Jobs</a>
+</nav>
 {% block content %}{% endblock %}
 </body>
 </html>

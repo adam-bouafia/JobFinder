@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import db
+from ..jobs.ingest import list_jobs
 from ..paths import DB_PATH
 from ..sponsors.match import match_company
 
@@ -41,7 +42,9 @@ def create_app() -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request, db_path: Annotated[Path, Depends(get_db_path)]) -> HTMLResponse:
         stats = db.sponsor_stats(db_path)
-        return templates.TemplateResponse(request, "index.html", {"stats": stats})
+        return templates.TemplateResponse(
+            request, "index.html", {"stats": stats, "active_nav": "home"}
+        )
 
     @app.get("/search", response_class=HTMLResponse)
     def search(
@@ -60,6 +63,30 @@ def create_app() -> FastAPI:
             result = None
         return templates.TemplateResponse(
             request, "_match_result.html", {"result": result, "query": company}
+        )
+
+    @app.get("/jobs", response_class=HTMLResponse)
+    def jobs_view(
+        request: Request,
+        db_path: Annotated[Path, Depends(get_db_path)],
+        sponsors_only: bool = Query(default=False),
+        open_applications_only: bool = Query(default=False),
+    ) -> HTMLResponse:
+        jobs = list_jobs(
+            db_path=db_path,
+            sponsors_only=sponsors_only,
+            open_applications_only=open_applications_only,
+            limit=100,
+        )
+        return templates.TemplateResponse(
+            request,
+            "jobs.html",
+            {
+                "jobs": jobs,
+                "sponsors_only": sponsors_only,
+                "open_applications_only": open_applications_only,
+                "active_nav": "jobs",
+            },
         )
 
     return app
