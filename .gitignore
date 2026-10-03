@@ -13,6 +13,7 @@ build/
 # Data (personal / regenerable)
 data/*.db
 data/*.db-*
+data/resumes/
 
 # Secrets / local overrides
 .env

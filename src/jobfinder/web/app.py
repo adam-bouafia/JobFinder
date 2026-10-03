@@ -9,19 +9,27 @@ hosting decision (local-first by default).
 
 from __future__ import annotations
 
+import re
+import time
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlencode
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import db
+from ..jobs import adzuna
 from ..jobs.export import to_markdown, to_pdf_bytes, to_text
-from ..jobs.ingest import StoredJob, list_jobs
-from ..paths import DB_PATH
+from ..jobs.ingest import StoredJob, ingest_jobs, list_jobs
+from ..matching.score import rescore_jobs
+from ..paths import DB_PATH, RESUME_DIR
+from ..resume.parse import latest_resume_profile, parse_resume
 from ..sponsors.match import match_company
+
+_SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
 
 EXPORT_MEDIA_TYPES = {
     "md": "text/markdown",
@@ -71,9 +79,12 @@ def create_app() -> FastAPI:
         sponsors_only: bool = Query(default=False),
         open_applications_only: bool = Query(default=False),
         experience: str = Query(default=""),
+        fetched: int | None = Query(default=None),
+        error: str = Query(default=""),
     ) -> HTMLResponse:
         stats = db.sponsor_stats(db_path)
         jobs = _search_jobs(db_path, query, sponsors_only, open_applications_only, experience)
+        resume_profile = latest_resume_profile(db_path)
         return templates.TemplateResponse(
             request,
             "index.html",
@@ -84,6 +95,9 @@ def create_app() -> FastAPI:
                 "sponsors_only": sponsors_only,
                 "open_applications_only": open_applications_only,
                 "experience": experience,
+                "fetched": fetched,
+                "error": error,
+                "resume_profile": resume_profile,
                 "active_nav": "home",
             },
         )
@@ -117,6 +131,67 @@ def create_app() -> FastAPI:
         return templates.TemplateResponse(
             request, "company.html", {"stats": stats, "active_nav": "company"}
         )
+
+    @app.get("/resume", response_class=HTMLResponse)
+    def resume_page(
+        request: Request,
+        db_path: Annotated[Path, Depends(get_db_path)],
+        uploaded: bool = Query(default=False),
+        error: str = Query(default=""),
+    ) -> HTMLResponse:
+        profile = latest_resume_profile(db_path)
+        return templates.TemplateResponse(
+            request,
+            "resume.html",
+            {"profile": profile, "uploaded": uploaded, "error": error, "active_nav": "resume"},
+        )
+
+    @app.post("/resume/upload")
+    def upload_resume(
+        db_path: Annotated[Path, Depends(get_db_path)],
+        file: UploadFile,
+    ) -> RedirectResponse:
+        looks_like_pdf = file.content_type == "application/pdf" or (
+            file.filename or ""
+        ).lower().endswith(".pdf")
+        if not looks_like_pdf:
+            params = urlencode({"error": "Only PDF resumes are supported."})
+            return RedirectResponse(url=f"/resume?{params}", status_code=303)
+
+        RESUME_DIR.mkdir(parents=True, exist_ok=True)
+        safe_name = _SAFE_FILENAME.sub("_", file.filename or "resume.pdf")
+        dest = RESUME_DIR / f"{int(time.time())}-{safe_name}"
+        dest.write_bytes(file.file.read())
+
+        try:
+            parse_resume(dest, db_path=db_path)
+        except Exception:
+            params = urlencode(
+                {"error": "Could not read that PDF - is it a text or scanned resume?"}
+            )
+            return RedirectResponse(url=f"/resume?{params}", status_code=303)
+        rescore_jobs(db_path=db_path)
+
+        return RedirectResponse(url="/resume?uploaded=true", status_code=303)
+
+    @app.post("/jobs/fetch")
+    def fetch_jobs(
+        db_path: Annotated[Path, Depends(get_db_path)],
+        query: str = Form(...),
+    ) -> RedirectResponse:
+        """Pulls fresh Adzuna listings for `query` straight from the UI -
+        the web equivalent of `jf search-jobs` + `jf rescore-jobs`."""
+        try:
+            listings = adzuna.search(query)
+        except adzuna.AdzunaCredentialsError:
+            params = urlencode(
+                {"error": "Adzuna credentials aren't configured on this deployment."}
+            )
+            return RedirectResponse(url=f"/?{params}", status_code=303)
+        inserted = ingest_jobs(listings, db_path=db_path)
+        rescore_jobs(db_path=db_path)
+        params = urlencode({"query": query, "fetched": inserted})
+        return RedirectResponse(url=f"/?{params}", status_code=303)
 
     @app.get("/search", response_class=HTMLResponse)
     def search(

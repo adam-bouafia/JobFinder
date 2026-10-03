@@ -2,16 +2,30 @@
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 from jobfinder import db
+from jobfinder.jobs import adzuna
 from jobfinder.jobs.ingest import ingest_jobs
 from jobfinder.jobs.models import JobListing
 from jobfinder.sponsors.normalize import normalize
 from jobfinder.web.app import create_app, get_db_path
+
+
+def _sample_resume_pdf(text: str) -> bytes:
+    """A minimal real PDF with a text layer, for upload tests - pdfplumber
+    needs an actual parseable PDF, not just arbitrary bytes."""
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=letter)
+    pdf.drawString(72, 700, text)
+    pdf.save()
+    return buffer.getvalue()
 
 
 @pytest.fixture
@@ -212,3 +226,67 @@ def test_export_respects_query(client_with_jobs: TestClient) -> None:
 def test_export_rejects_unknown_format(client_with_jobs: TestClient) -> None:
     response = client_with_jobs.get("/export", params={"format": "docx"})
     assert response.status_code == 400
+
+
+def test_resume_page_with_no_resume_prompts_upload(client: TestClient) -> None:
+    response = client.get("/resume")
+    assert response.status_code == 200
+    assert "No resume uploaded yet" in response.text
+
+
+def test_resume_upload_rejects_non_pdf(client: TestClient) -> None:
+    response = client.post(
+        "/resume/upload",
+        files={"file": ("resume.txt", b"plain text", "text/plain")},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/resume?error=")
+
+
+def test_resume_upload_parses_pdf_and_rescores_jobs(
+    client_with_jobs: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("jobfinder.web.app.RESUME_DIR", tmp_path / "resumes")
+    pdf_bytes = _sample_resume_pdf("Experienced Python backend engineer.")
+
+    upload = client_with_jobs.post(
+        "/resume/upload",
+        files={"file": ("resume.pdf", pdf_bytes, "application/pdf")},
+        follow_redirects=False,
+    )
+    assert upload.status_code == 303
+    assert upload.headers["location"] == "/resume?uploaded=true"
+
+    page = client_with_jobs.get("/resume")
+    assert "python" in page.text.lower()
+
+    index = client_with_jobs.get("/")
+    assert "uploaded resume" in index.text
+
+
+def test_jobs_fetch_without_credentials_redirects_with_error(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ADZUNA_APP_ID", raising=False)
+    monkeypatch.delenv("ADZUNA_APP_KEY", raising=False)
+
+    response = client.post("/jobs/fetch", data={"query": "engineer"}, follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/?error=")
+
+
+def test_jobs_fetch_ingests_new_listings(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_listing = JobListing("Acme", "Platform Engineer", "Amsterdam", "https://x/9", "adzuna")
+    monkeypatch.setattr(adzuna, "search", lambda query, **kwargs: [fake_listing])
+
+    response = client.post("/jobs/fetch", data={"query": "platform"}, follow_redirects=False)
+
+    assert response.status_code == 303
+    assert "fetched=1" in response.headers["location"]
+
+    index = client.get("/")
+    assert "Platform Engineer" in index.text

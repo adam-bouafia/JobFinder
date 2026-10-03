@@ -7,9 +7,26 @@
   {% else %}
     No sponsor data yet &mdash; run <code>jf sync-sponsors</code> first
   {% endif %}
-  &middot; add roles with <code>jf fetch-jobs</code> / <code>jf search-jobs</code>,
-  then <code>jf rescore-jobs</code> after parsing a resume.
+  &middot;
+  {% if resume_profile %}
+    scoring against your <a href="/resume">uploaded resume</a>
+    ({{ resume_profile.skills|length }} skills detected)
+  {% else %}
+    <a href="/resume">upload a resume</a> to score jobs against your skills
+  {% endif %}
 </p>
+
+{% if fetched is not none %}
+<p class="banner success">Fetched {{ fetched }} new role{{ '' if fetched == 1 else 's' }} from Adzuna.</p>
+{% endif %}
+{% if error %}
+<p class="banner error">{{ error }}</p>
+{% endif %}
+
+<form action="/jobs/fetch" method="post" class="fetch-form">
+  <input type="text" name="query" placeholder="e.g. &quot;platform engineer&quot;" autocomplete="off" required>
+  <button type="submit">Fetch new roles</button>
+</form>
 
 <form
   hx-get="/results"

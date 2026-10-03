@@ -60,6 +60,7 @@ RUNTIME_DEPENDENCIES = [
     "pdf2image>=1.17.0",
     "python-dotenv>=1.2.4",
     "reportlab>=5.0.1",
+    "python-multipart>=0.0.20",
 ]
 
 image = (

@@ -17,3 +17,4 @@ DATA_DIR = Path(_data_dir_override) if _data_dir_override else PROJECT_ROOT / "d
 DB_PATH = DATA_DIR / "jobfinder.db"
 SPONSORS_SNAPSHOT_PATH = DATA_DIR / "sponsors_latest.json"
 CONFIG_PATH = PROJECT_ROOT / "jobfinder.toml"
+RESUME_DIR = DATA_DIR / "resumes"
