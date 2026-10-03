@@ -52,21 +52,28 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS idx_sponsors_normalized ON sponsors(name_normalized);
 CREATE INDEX IF NOT EXISTS idx_jobs_sponsor_kvk ON jobs(sponsor_kvk);
 CREATE INDEX IF NOT EXISTS idx_jobs_fit_score ON jobs(fit_score);
-CREATE INDEX IF NOT EXISTS idx_jobs_experience_level ON jobs(experience_level);
 """
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    """Add columns introduced after a table's initial CREATE TABLE.
+    """Add columns (and their indexes) introduced after a table's initial
+    CREATE TABLE.
 
     CREATE TABLE IF NOT EXISTS doesn't retroactively add new columns to an
     already-existing table, so a real schema change (like adding
     experience_level to an existing jobs table with live data in it) needs
-    an explicit, idempotent ALTER TABLE here.
+    an explicit, idempotent ALTER TABLE here - and the column's index has
+    to live here too, not in SCHEMA: on a pre-existing database,
+    executescript(SCHEMA) runs before this function, so an index on a
+    column that doesn't exist yet (OperationalError) - caught by actually
+    running this against the real local database, which already had a
+    jobs table from before this column existed; every test fixture starts
+    from a brand new file, so this ordering bug never showed up there.
     """
     existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
     if "experience_level" not in existing_columns:
         conn.execute("ALTER TABLE jobs ADD COLUMN experience_level TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_experience_level ON jobs(experience_level)")
 
 
 def connect(path: Path = DB_PATH) -> sqlite3.Connection:
