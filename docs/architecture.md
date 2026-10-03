@@ -78,7 +78,7 @@ flowchart TB
         LLM["Generic OpenAI-compatible provider\n(only if a credit pool is confirmed alive)"]
     end
 
-    subgraph EXT["Chrome extension, TypeScript MV3\n(planned)"]
+    subgraph EXT["Chrome extension, TypeScript MV3"]
         BUNDLE[("sponsors.json\nbundled, refreshed monthly")]
         CONTENT["content script\nsite adapters"]
         MATCHERTS["matcher.ts\nin-browser fuzzy match"]
@@ -124,7 +124,7 @@ flowchart LR
     MATCH["match.py\nrapidfuzz token_set_ratio vs name_normalized\nthreshold 90"]
     CLIOUT["jf match --company 'X'\n/ jf serve search box\nsponsor yes/no + matched name + score"]
     SNAP["export.py\nsponsors_latest.json"]
-    EXTBUNDLE["extension/src/data/sponsors.json\n(planned)"]
+    EXTBUNDLE["extension/src/data/sponsors.json\ncopied at extension build time"]
     SCHED["systemd timer (local, monthly)\n+ GitHub Actions cron (monthly)"]
 
     SRC -->|"one GET per sync run"| SCRAPE --> NORM --> DB
@@ -151,7 +151,7 @@ below 57 across every adversarial case tried). See the docstring on
 | --- | --- | --- |
 | IND register scraping | Low - government register published for exactly this lookup purpose; robots.txt allows it; no reuse restriction found | One GET per monthly sync, descriptive User-Agent, abort loudly if row count craters or parsing yields zero rows |
 | LinkedIn/Indeed server-side bulk scraping | High - ToS risk, bot-detection fragility, risk to the account doing it | Avoid entirely. Future job ingestion uses Adzuna's API and direct ATS JSON endpoints instead |
-| Chrome extension badge overlay | Materially lower - reads only the page already rendered in an authenticated session, same category as an ad blocker | Stays client-side only, no server-side fetch of LinkedIn/Indeed pages |
+| Chrome extension badge overlay | Materially lower - reads only the page already rendered in an authenticated session, same category as an ad blocker | Stays client-side only, no server-side fetch of LinkedIn/Indeed pages. Follows from this: the LinkedIn/Indeed CSS selectors in `extension/src/content/site-adapters/` are best-effort, never verified against a live session - see `extension/README.md` |
 | Resume content (PII) | N/A for local-only parsing | Any third-party parsing tier is opt-in only, never default |
 | Web UI reachability | N/A while local-only | Defaults to `127.0.0.1`; opening it up is an explicit `--host` choice, see Hosting above |
 
@@ -159,8 +159,8 @@ below 57 across every adversarial case tried). See the docstring on
 
 1. **Sponsor registry sync + fuzzy match** (done) - zero external API dependency, the actual differentiator.
 2. **CLI + local web UI** (done) - `jf` commands and `jf serve` (FastAPI + Jinja2 + htmx), both backed by the same matching code. Local-only by default; see Hosting above for remote-access options.
-3. **Chrome extension badge overlay** (next) - depends only on (1)'s exported snapshot.
-4. **Resume OCR + structured extraction** - local-first (pdfplumber/pytesseract), optional opt-in cloud tiers.
+3. **Chrome extension badge overlay** (done) - Vite + CRXJS + TypeScript MV3, bundled sponsor snapshot, in-browser `token_set_ratio` port. Verified end-to-end in real Chrome against a simulated LinkedIn navigation; real selectors still need checking against a live session, see `extension/README.md`.
+4. **Resume OCR + structured extraction** (next) - local-first (pdfplumber/pytesseract), optional opt-in cloud tiers.
 5. **Broader job ingestion + open-application tracking** - legitimate APIs/ATS endpoints only, never bulk LinkedIn/Indeed scraping.
 
 Full reasoning and the hackathon-credential/job-research research behind
