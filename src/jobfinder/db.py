@@ -23,6 +23,16 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT
 );
 
+CREATE TABLE IF NOT EXISTS resume_profile (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_path      TEXT NOT NULL,
+    raw_text         TEXT NOT NULL,
+    skills           TEXT NOT NULL,  -- JSON array
+    years_experience REAL,
+    education        TEXT NOT NULL,  -- JSON array
+    parsed_at        TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_sponsors_normalized ON sponsors(name_normalized);
 """
 

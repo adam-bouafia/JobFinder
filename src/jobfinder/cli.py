@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 from rich.console import Console
 
+from .resume.parse import parse_resume
 from .sponsors import export as sponsors_export
 from .sponsors import scrape as sponsors_scrape
 from .sponsors.match import match_company
@@ -39,6 +42,24 @@ def cmd_match(
         )
     else:
         console.print(f"[yellow]Not found[/yellow] (best score {result.score:.1f})")
+
+
+@app.command("parse-resume")
+def cmd_parse_resume(
+    path: Path = typer.Argument(..., exists=True, readable=True, help="Path to a resume PDF."),
+) -> None:
+    """Extract skills, experience, and education from a resume PDF."""
+    profile = parse_resume(path)
+    console.print(f"[green]Parsed {path}[/green]")
+    console.print(f"Skills: {', '.join(profile.skills) or '(none detected)'}")
+    years = f"{profile.years_experience:.0f}" if profile.years_experience is not None else "?"
+    console.print(f"Years of experience (heuristic): {years}")
+    if profile.education:
+        console.print("Education:")
+        for line in profile.education:
+            console.print(f"  - {line}")
+    else:
+        console.print("Education: (none detected)")
 
 
 @app.command("serve")

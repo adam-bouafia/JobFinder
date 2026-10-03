@@ -35,6 +35,12 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[tool.ruff.lint.flake8-bugbear]
+# typer.Argument(...)/typer.Option(...) as a default value is how Typer is
+# meant to be used, not the B008 mutable-default footgun. typer.Option was
+# already exempt by ruff's own defaults; typer.Argument wasn't.
+extend-immutable-calls = ["typer.Argument"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
