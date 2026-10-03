@@ -56,6 +56,7 @@ ignore_missing_imports = true
 [dependency-groups]
 dev = [
     "httpx2>=2.13.1",
+    "modal>=1.6.0",
     "mypy>=2.4.0",
     "pillow>=12.3.0",
     "pytest>=9.1.1",
