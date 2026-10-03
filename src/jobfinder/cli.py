@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
+from dotenv import load_dotenv
 from rich.console import Console
 
 from .jobs import adzuna as jobs_adzuna
@@ -12,10 +13,16 @@ from .jobs.ats import ATS_FETCHERS
 from .jobs.ats import fetch as ats_fetch
 from .jobs.ingest import ingest_jobs, list_jobs
 from .matching.score import rescore_jobs
+from .paths import PROJECT_ROOT
 from .resume.parse import parse_resume
 from .sponsors import export as sponsors_export
 from .sponsors import scrape as sponsors_scrape
 from .sponsors.match import match_company
+
+# Explicit path, not dotenv's default cwd-upward search: `jf` should pick
+# up repo-root secrets (e.g. ADZUNA_APP_ID/KEY) regardless of where it's
+# run from.
+load_dotenv(PROJECT_ROOT / ".env")
 
 app = typer.Typer(
     help="Personal NL job-search tool: IND sponsor lookup and job matching.",
