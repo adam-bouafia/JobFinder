@@ -2,6 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script>
+  // Applied before paint, in <head>, so there's no flash of the wrong
+  // theme - the toggle's click handler lives near the end of <body>.
+  (function () {
+    try {
+      var saved = localStorage.getItem("jobfinder-theme");
+      if (saved) document.documentElement.setAttribute("data-theme", saved);
+    } catch (e) {}
+  })();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>JobFinder</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -15,10 +25,14 @@
     --bg: #ffffff;
     --muted: #888888;
     --rule: #e3e3e3;
-    --accent: #111111;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --fg: #e8e8e8; --bg: #0a0a0a; --muted: #8a8a8a; --rule: #2a2a2a; --accent: #e8e8e8; }
+    :root:not([data-theme="light"]) {
+      --fg: #e8e8e8; --bg: #0a0a0a; --muted: #8a8a8a; --rule: #2a2a2a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --fg: #e8e8e8; --bg: #0a0a0a; --muted: #8a8a8a; --rule: #2a2a2a;
   }
   * { box-sizing: border-box; }
   body {
@@ -26,7 +40,7 @@
     background: var(--bg);
     color: var(--fg);
     max-width: 640px;
-    margin: 4rem auto;
+    margin: 3rem auto;
     padding: 0 1.25rem 4rem;
     line-height: 1.55;
   }
@@ -42,11 +56,11 @@
     color: var(--muted);
     font-size: 0.8rem;
     text-align: center;
-    margin-bottom: 2.5rem;
+    margin-bottom: 2rem;
   }
   .meta code { font-size: 0.78rem; }
-  .export-links a { margin: 0 0.5rem; text-decoration: underline; }
-  .export-links a:first-of-type { margin-left: 0.5rem; }
+  .export-links a { margin: 0 0.4rem; text-decoration: underline; }
+  .export-links a:first-of-type { margin-left: 0.4rem; }
   hr {
     border: none;
     border-top: 1px solid var(--rule);
@@ -59,7 +73,8 @@
     padding: 0.05rem 0.3rem;
     font-size: 0.9em;
   }
-  form { display: flex; gap: 0.6rem; margin-bottom: 1.2rem; }
+  form { margin-bottom: 0.75rem; }
+  .search-row { display: flex; gap: 0.6rem; margin-bottom: 0.9rem; }
   input[type=text] {
     flex: 1;
     font-family: inherit;
@@ -71,6 +86,17 @@
     border-radius: 0;
   }
   input[type=text]:focus { outline: none; border-color: var(--fg); }
+  select {
+    font-family: inherit;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: var(--bg);
+    color: var(--muted);
+    border: 1px solid var(--rule);
+    padding: 0.4rem 0.6rem;
+    border-radius: 0;
+  }
   button {
     font-family: inherit;
     padding: 0.6rem 1.2rem;
@@ -108,18 +134,30 @@
   nav {
     display: flex;
     justify-content: center;
+    align-items: center;
     gap: 2rem;
-    margin-bottom: 3rem;
+    margin-bottom: 2.5rem;
     font-size: 0.75rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
   }
   nav a { text-decoration: none; color: var(--muted); }
   nav a.active { color: var(--fg); border-bottom: 1px solid var(--fg); padding-bottom: 0.2rem; }
+  #theme-toggle {
+    font-family: inherit;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: none;
+    border: 1px solid var(--rule);
+    color: var(--muted);
+    padding: 0.3rem 0.6rem;
+  }
+  #theme-toggle:hover { background: none; color: var(--fg); border-color: var(--fg); }
   .filters {
     display: flex;
     gap: 1.5rem;
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
     font-size: 0.78rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -165,8 +203,9 @@
 </head>
 <body>
 <nav>
-  <a href="/" class="{{ 'active' if active_nav == 'home' else '' }}">Sponsor Check</a>
-  <a href="/jobs" class="{{ 'active' if active_nav == 'jobs' else '' }}">Jobs</a>
+  <a href="/" class="{{ 'active' if active_nav == 'home' else '' }}">Jobs</a>
+  <a href="/company" class="{{ 'active' if active_nav == 'company' else '' }}">Check a Company</a>
+  <button id="theme-toggle" type="button">Theme</button>
 </nav>
 {% block content %}{% endblock %}
 <div class="site-footer">
@@ -175,5 +214,28 @@
   <a href="https://adam-bouafia.github.io" target="_blank" rel="noopener">Portfolio</a>
   <a href="https://paypal.me/AdamBouafia" target="_blank" rel="noopener">Buy Me a Coffee</a>
 </div>
+<script>
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById("theme-toggle");
+    function currentTheme() {
+      var saved = null;
+      try { saved = localStorage.getItem("jobfinder-theme"); } catch (e) {}
+      if (saved) return saved;
+      var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      return prefersDark ? "dark" : "light";
+    }
+    function updateLabel() {
+      btn.textContent = currentTheme() === "dark" ? "Light mode" : "Dark mode";
+    }
+    updateLabel();
+    btn.addEventListener("click", function () {
+      var next = currentTheme() === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem("jobfinder-theme", next); } catch (e) {}
+      updateLabel();
+    });
+  })();
+</script>
 </body>
 </html>

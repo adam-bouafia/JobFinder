@@ -1,9 +1,10 @@
-"""FastAPI web UI: sponsor-sync status and company lookup.
+"""FastAPI web UI: job search (search box + filters + results) and a
+standalone company-sponsor lookup.
 
-Mirrors what the CLI already does (`jf sync-sponsors`, `jf match`) as a
-browser UI, reusing the same `match_company` logic rather than duplicating
-it. Runs locally via `jf serve`; see docs/architecture.md for the hosting
-decision (local-first by default).
+Mirrors what the CLI already does (`jf list-jobs`, `jf match`, `jf export-
+jobs`) as a browser UI, reusing the same functions rather than duplicating
+logic. Runs locally via `jf serve`; see docs/architecture.md for the
+hosting decision (local-first by default).
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 
 from .. import db
 from ..jobs.export import to_markdown, to_pdf_bytes, to_text
-from ..jobs.ingest import list_jobs
+from ..jobs.ingest import StoredJob, list_jobs
 from ..paths import DB_PATH
 from ..sponsors.match import match_company
 
@@ -46,11 +47,75 @@ def create_app() -> FastAPI:
     app = FastAPI(title="JobFinder")
     app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="static")
 
+    def _search_jobs(
+        db_path: Path,
+        query: str,
+        sponsors_only: bool,
+        open_applications_only: bool,
+        experience: str,
+    ) -> list[StoredJob]:
+        return list_jobs(
+            db_path=db_path,
+            query=query or None,
+            sponsors_only=sponsors_only,
+            open_applications_only=open_applications_only,
+            experience_level=experience or None,
+            limit=100,
+        )
+
     @app.get("/", response_class=HTMLResponse)
-    def index(request: Request, db_path: Annotated[Path, Depends(get_db_path)]) -> HTMLResponse:
+    def index(
+        request: Request,
+        db_path: Annotated[Path, Depends(get_db_path)],
+        query: str = Query(default=""),
+        sponsors_only: bool = Query(default=False),
+        open_applications_only: bool = Query(default=False),
+        experience: str = Query(default=""),
+    ) -> HTMLResponse:
+        stats = db.sponsor_stats(db_path)
+        jobs = _search_jobs(db_path, query, sponsors_only, open_applications_only, experience)
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {
+                "stats": stats,
+                "jobs": jobs,
+                "query": query,
+                "sponsors_only": sponsors_only,
+                "open_applications_only": open_applications_only,
+                "experience": experience,
+                "active_nav": "home",
+            },
+        )
+
+    @app.get("/results", response_class=HTMLResponse)
+    def results(
+        request: Request,
+        db_path: Annotated[Path, Depends(get_db_path)],
+        query: str = Query(default=""),
+        sponsors_only: bool = Query(default=False),
+        open_applications_only: bool = Query(default=False),
+        experience: str = Query(default=""),
+    ) -> HTMLResponse:
+        """htmx partial: just the results fragment, for live search/filtering."""
+        jobs = _search_jobs(db_path, query, sponsors_only, open_applications_only, experience)
+        return templates.TemplateResponse(
+            request,
+            "_job_results.html",
+            {
+                "jobs": jobs,
+                "query": query,
+                "sponsors_only": sponsors_only,
+                "open_applications_only": open_applications_only,
+                "experience": experience,
+            },
+        )
+
+    @app.get("/company", response_class=HTMLResponse)
+    def company(request: Request, db_path: Annotated[Path, Depends(get_db_path)]) -> HTMLResponse:
         stats = db.sponsor_stats(db_path)
         return templates.TemplateResponse(
-            request, "index.html", {"stats": stats, "active_nav": "home"}
+            request, "company.html", {"stats": stats, "active_nav": "company"}
         )
 
     @app.get("/search", response_class=HTMLResponse)
@@ -72,44 +137,24 @@ def create_app() -> FastAPI:
             request, "_match_result.html", {"result": result, "query": company}
         )
 
-    @app.get("/jobs", response_class=HTMLResponse)
-    def jobs_view(
-        request: Request,
-        db_path: Annotated[Path, Depends(get_db_path)],
-        sponsors_only: bool = Query(default=False),
-        open_applications_only: bool = Query(default=False),
-    ) -> HTMLResponse:
-        jobs = list_jobs(
-            db_path=db_path,
-            sponsors_only=sponsors_only,
-            open_applications_only=open_applications_only,
-            limit=100,
-        )
-        return templates.TemplateResponse(
-            request,
-            "jobs.html",
-            {
-                "jobs": jobs,
-                "sponsors_only": sponsors_only,
-                "open_applications_only": open_applications_only,
-                "active_nav": "jobs",
-            },
-        )
-
-    @app.get("/jobs/export")
-    def jobs_export(
+    @app.get("/export")
+    def export(
         db_path: Annotated[Path, Depends(get_db_path)],
         fmt: str = Query(default="md", alias="format"),
+        query: str = Query(default=""),
         sponsors_only: bool = Query(default=False),
         open_applications_only: bool = Query(default=False),
+        experience: str = Query(default=""),
     ) -> Response:
         if fmt not in EXPORT_MEDIA_TYPES:
             raise HTTPException(status_code=400, detail="format must be md, txt, or pdf")
 
         jobs = list_jobs(
             db_path=db_path,
+            query=query or None,
             sponsors_only=sponsors_only,
             open_applications_only=open_applications_only,
+            experience_level=experience or None,
             limit=500,
         )
         if fmt == "md":

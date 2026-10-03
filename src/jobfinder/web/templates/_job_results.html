@@ -1,0 +1,39 @@
+{% set filter_qs = "query=" ~ (query|default("")|urlencode) ~ "&sponsors_only=" ~ ('true' if sponsors_only else 'false') ~ "&open_applications_only=" ~ ('true' if open_applications_only else 'false') ~ "&experience=" ~ (experience|default("")) %}
+<p class="meta export-links">
+  {{ jobs|length }} job{{ '' if jobs|length == 1 else 's' }} found.
+  {% if jobs %}
+  Export:
+  <a href="/export?format=md&{{ filter_qs }}">Markdown</a>
+  <a href="/export?format=txt&{{ filter_qs }}">Text</a>
+  <a href="/export?format=pdf&{{ filter_qs }}">PDF</a>
+  {% endif %}
+</p>
+
+{% if jobs %}
+<div class="job-list">
+  {% for job in jobs %}
+  <div class="job-card">
+    <div class="title">{{ job.title }}</div>
+    <div class="company">{{ job.company_name }}{% if job.location %} &middot; {{ job.location }}{% endif %}</div>
+    <div class="tags">
+      {% if job.fit_score is not none %}
+        <span class="tag">fit {{ "%.1f"|format(job.fit_score) }}</span>
+      {% endif %}
+      {% if job.experience_level %}
+        <span class="tag">{{ job.experience_level }}</span>
+      {% endif %}
+      {% if job.sponsor_kvk %}
+        <span class="tag sponsor">IND sponsor &middot; KVK {{ job.sponsor_kvk }}</span>
+      {% endif %}
+      {% if job.is_open_application %}
+        <span class="tag open-app">open application</span>
+      {% endif %}
+      <span class="tag">{{ job.source }}</span>
+    </div>
+    <div><a class="link" href="{{ job.url }}" target="_blank" rel="noopener">View posting &rarr;</a></div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="meta">No jobs match. Try a different search, clear the filters, or run <code>jf fetch-jobs</code> / <code>jf search-jobs</code> first.</p>
+{% endif %}

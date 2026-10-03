@@ -42,7 +42,7 @@ def test_index_shows_sponsor_count(client: TestClient) -> None:
     assert "2 recognised sponsors synced" in response.text
 
 
-def test_index_with_no_data_prompts_sync(tmp_path: Path) -> None:
+def test_index_with_no_sponsor_data_prompts_sync(tmp_path: Path) -> None:
     empty_db = tmp_path / "empty.db"
     with db.cursor(empty_db):
         pass
@@ -53,6 +53,13 @@ def test_index_with_no_data_prompts_sync(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "jf sync-sponsors" in response.text
+
+
+def test_company_page_shows_sponsor_count(client: TestClient) -> None:
+    response = client.get("/company")
+    assert response.status_code == 200
+    assert "2 recognised sponsors synced" in response.text
+    assert "Check a Company" in response.text
 
 
 def test_search_finds_known_sponsor(client: TestClient) -> None:
@@ -90,7 +97,9 @@ def client_with_jobs(tmp_path: Path) -> TestClient:
         )
     ingest_jobs(
         [
-            JobListing("Booking.com", "Backend Engineer", "Amsterdam", "https://x/1", "test"),
+            JobListing(
+                "Booking.com", "Senior Backend Engineer", "Amsterdam", "https://x/1", "test"
+            ),
             JobListing("Unrelated Co", "General Application", None, "https://x/2", "test"),
         ],
         db_path=db_path,
@@ -101,71 +110,95 @@ def client_with_jobs(tmp_path: Path) -> TestClient:
     return TestClient(test_app)
 
 
-def test_jobs_view_lists_ingested_jobs(client_with_jobs: TestClient) -> None:
-    response = client_with_jobs.get("/jobs")
+def test_index_lists_jobs_by_default(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/")
     assert response.status_code == 200
-    assert "Backend Engineer" in response.text
+    assert "Senior Backend Engineer" in response.text
     assert "Booking.com" in response.text
-    assert "2 jobs shown" in response.text
+    assert "2 jobs found" in response.text
 
 
-def test_jobs_view_sponsors_only_filter(client_with_jobs: TestClient) -> None:
-    response = client_with_jobs.get("/jobs", params={"sponsors_only": "true"})
-    assert response.status_code == 200
-    assert "Backend Engineer" in response.text
-    assert "General Application" not in response.text
-
-
-def test_jobs_view_open_applications_only_filter(client_with_jobs: TestClient) -> None:
-    response = client_with_jobs.get("/jobs", params={"open_applications_only": "true"})
-    assert response.status_code == 200
-    assert "General Application" in response.text
-    assert "Backend Engineer" not in response.text
-
-
-def test_jobs_view_with_no_jobs_shows_empty_state(tmp_path: Path) -> None:
+def test_index_with_no_jobs_shows_empty_state(tmp_path: Path) -> None:
     empty_db = tmp_path / "empty.db"
     with db.cursor(empty_db):
         pass
     test_app = create_app()
     test_app.dependency_overrides[get_db_path] = lambda: empty_db
 
-    response = TestClient(test_app).get("/jobs")
+    response = TestClient(test_app).get("/")
 
     assert response.status_code == 200
     assert "No jobs match" in response.text
 
 
-def test_jobs_export_markdown(client_with_jobs: TestClient) -> None:
-    response = client_with_jobs.get("/jobs/export", params={"format": "md"})
+def test_results_partial_filters_by_sponsors_only(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/results", params={"sponsors_only": "true"})
+    assert response.status_code == 200
+    assert "Senior Backend Engineer" in response.text
+    assert "General Application" not in response.text
+
+
+def test_results_partial_filters_by_open_applications_only(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/results", params={"open_applications_only": "true"})
+    assert response.status_code == 200
+    assert "General Application" in response.text
+    assert "Senior Backend Engineer" not in response.text
+
+
+def test_results_partial_filters_by_experience(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/results", params={"experience": "senior"})
+    assert response.status_code == 200
+    assert "Senior Backend Engineer" in response.text
+    assert "General Application" not in response.text
+
+
+def test_results_partial_filters_by_free_text_query(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/results", params={"query": "backend"})
+    assert response.status_code == 200
+    assert "Senior Backend Engineer" in response.text
+    assert "General Application" not in response.text
+
+
+def test_results_partial_is_just_the_fragment_not_a_full_page(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/results")
+    assert "<html" not in response.text
+    assert "<nav>" not in response.text
+
+
+def test_export_markdown(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/export", params={"format": "md"})
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/markdown")
     assert "attachment" in response.headers["content-disposition"]
-    assert "Backend Engineer" in response.text
+    assert "Senior Backend Engineer" in response.text
 
 
-def test_jobs_export_text(client_with_jobs: TestClient) -> None:
-    response = client_with_jobs.get("/jobs/export", params={"format": "txt"})
+def test_export_text(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/export", params={"format": "txt"})
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/plain")
-    assert "Backend Engineer" in response.text
+    assert "Senior Backend Engineer" in response.text
 
 
-def test_jobs_export_pdf(client_with_jobs: TestClient) -> None:
-    response = client_with_jobs.get("/jobs/export", params={"format": "pdf"})
+def test_export_pdf(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/export", params={"format": "pdf"})
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert response.content.startswith(b"%PDF-")
 
 
-def test_jobs_export_respects_filters(client_with_jobs: TestClient) -> None:
-    response = client_with_jobs.get(
-        "/jobs/export", params={"format": "md", "sponsors_only": "true"}
-    )
-    assert "Backend Engineer" in response.text
+def test_export_respects_filters(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/export", params={"format": "md", "sponsors_only": "true"})
+    assert "Senior Backend Engineer" in response.text
     assert "General Application" not in response.text
 
 
-def test_jobs_export_rejects_unknown_format(client_with_jobs: TestClient) -> None:
-    response = client_with_jobs.get("/jobs/export", params={"format": "docx"})
+def test_export_respects_query(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/export", params={"format": "md", "query": "general"})
+    assert "General Application" in response.text
+    assert "Senior Backend Engineer" not in response.text
+
+
+def test_export_rejects_unknown_format(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/export", params={"format": "docx"})
     assert response.status_code == 400

@@ -3,21 +3,47 @@
 <h1>JobFinder</h1>
 <p class="meta">
   {% if stats.synced_at %}
-    {{ stats.count }} recognised sponsors synced ({{ stats.synced_at }} UTC).
+    {{ stats.count }} recognised sponsors synced ({{ stats.synced_at }} UTC)
   {% else %}
-    No sponsor data yet &mdash; run <code>jf sync-sponsors</code> first.
+    No sponsor data yet &mdash; run <code>jf sync-sponsors</code> first
   {% endif %}
+  &middot; add roles with <code>jf fetch-jobs</code> / <code>jf search-jobs</code>,
+  then <code>jf rescore-jobs</code> after parsing a resume.
 </p>
 
-<form hx-get="/search" hx-target="#result" hx-trigger="submit, keyup changed delay:400ms from:input">
-  <input type="text" name="company" placeholder="Company name, e.g. Booking.com" autofocus autocomplete="off">
-  <button type="submit">Check</button>
+<form
+  hx-get="/results"
+  hx-target="#results"
+  hx-trigger="submit, keyup changed delay:400ms from:input[type=text], change from:input[type=checkbox], change from:select"
+>
+  <div class="search-row">
+    <input type="text" name="query" value="{{ query }}" placeholder="Search job title or company" autocomplete="off" autofocus>
+    <button type="submit">Search</button>
+  </div>
+  <div class="filters">
+    <label>
+      <input type="checkbox" name="sponsors_only" value="true" {{ 'checked' if sponsors_only }}>
+      IND sponsors only
+    </label>
+    <label>
+      <input type="checkbox" name="open_applications_only" value="true" {{ 'checked' if open_applications_only }}>
+      Open applications
+    </label>
+    <select name="experience">
+      <option value="" {{ 'selected' if not experience }}>Any experience</option>
+      <option value="junior" {{ 'selected' if experience == 'junior' }}>Junior</option>
+      <option value="mid" {{ 'selected' if experience == 'mid' }}>Mid</option>
+      <option value="senior" {{ 'selected' if experience == 'senior' }}>Senior</option>
+    </select>
+  </div>
 </form>
 
-<div id="result"></div>
+<div id="results">
+  {% include "_job_results.html" %}
+</div>
 
 <footer>
-  Checks against the IND public register of recognised sponsors, synced locally.
+  Sponsor status is a fuzzy match against the synced IND register, not a guarantee.
   Always <a href="https://ind.nl/en/public-register-recognised-sponsors/public-register-work" target="_blank" rel="noopener">verify on ind.nl</a> before relying on this for anything important.
 </footer>
 {% endblock %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Check a Company</h1>
+<p class="meta">
+  {% if stats.synced_at %}
+    {{ stats.count }} recognised sponsors synced ({{ stats.synced_at }} UTC).
+  {% else %}
+    No sponsor data yet &mdash; run <code>jf sync-sponsors</code> first.
+  {% endif %}
+</p>
+
+<form hx-get="/search" hx-target="#result" hx-trigger="submit, keyup changed delay:400ms from:input">
+  <div class="search-row">
+    <input type="text" name="company" placeholder="Company name, e.g. Booking.com" autofocus autocomplete="off">
+    <button type="submit">Check</button>
+  </div>
+</form>
+
+<div id="result"></div>
+
+<footer>
+  Checks against the IND public register of recognised sponsors, synced locally.
+  Always <a href="https://ind.nl/en/public-register-recognised-sponsors/public-register-work" target="_blank" rel="noopener">verify on ind.nl</a> before relying on this for anything important.
+</footer>
+{% endblock %}
