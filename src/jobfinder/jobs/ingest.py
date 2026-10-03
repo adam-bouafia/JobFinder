@@ -9,10 +9,46 @@ from datetime import UTC, datetime
 from typing import Any
 
 from ..db import cursor
+from ..search import meilisearch_client
 from ..sponsors.match import load_sponsor_choices, match_against_choices
 from .experience import classify_experience_level
 from .models import JobListing
 from .open_applications import is_open_application
+
+
+def to_search_doc(row: dict[str, Any]) -> dict[str, Any]:
+    """A Meilisearch-ready document from a raw `jobs` row - same fields
+    StoredJob.from_row uses, since the web UI renders search hits the
+    same way it renders a StoredJob (Jinja2's attribute access works on
+    dict keys too, so no StoredJob reconstruction needed there)."""
+    return {
+        "id": row["id"],
+        "company_name": row["company_name"],
+        "title": row["title"],
+        "location": row["location"],
+        "url": row["url"],
+        "source": row["source"],
+        "is_open_application": row["is_open_application"],
+        "sponsor_kvk": row["sponsor_kvk"],
+        "fit_score": row["fit_score"],
+        "experience_level": row["experience_level"],
+        "description": row["description"],
+        "fetched_at": row["fetched_at"].isoformat(timespec="seconds"),
+    }
+
+
+def _reindex_by_url(conn: Any, urls: list[str]) -> None:
+    """Best-effort: push the current row for each URL into the search
+    index. Never raises - a down/unconfigured Meilisearch must not break
+    ingestion, which has to keep working against Postgres alone (see
+    search/meilisearch_client.py's module docstring)."""
+    if not urls:
+        return
+    try:
+        rows = conn.execute("SELECT * FROM jobs WHERE url = ANY(%s)", (urls,)).fetchall()
+        meilisearch_client.index_jobs([to_search_doc(row) for row in rows])
+    except Exception as error:  # noqa: BLE001 - deliberately broad, see docstring
+        print(f"[search index] skipped: {error}")
 
 
 def ingest_jobs(listings: list[JobListing], dsn: str | None = None) -> int:
@@ -68,6 +104,7 @@ def ingest_jobs(listings: list[JobListing], dsn: str | None = None) -> int:
             )
             if result.rowcount:
                 inserted += 1
+        _reindex_by_url(conn, [listing.url for listing in listings])
     return inserted
 
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 import time
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, UploadFile
@@ -26,6 +26,7 @@ from ..jobs.ingest import StoredJob, count_jobs, list_jobs
 from ..matching.score import rescore_jobs
 from ..paths import RESUME_DIR
 from ..resume.parse import latest_resume_profile, parse_resume
+from ..search import meilisearch_client
 from ..sponsors.match import match_company
 
 _SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
@@ -56,40 +57,47 @@ def create_app() -> FastAPI:
     app = FastAPI(title="JobFinder")
     app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="static")
 
-    def _search_jobs(
+    def _search(
         dsn: str | None,
         query: str,
         city: str,
         sponsors_only: bool,
         open_applications_only: bool,
         experience: str,
-    ) -> list[StoredJob]:
-        return list_jobs(
-            dsn=dsn,
-            query=query or None,
-            city=city or None,
-            sponsors_only=sponsors_only,
-            open_applications_only=open_applications_only,
-            experience_level=experience or None,
-            limit=100,
-        )
-
-    def _count_jobs(
-        dsn: str | None,
-        query: str,
-        city: str,
-        sponsors_only: bool,
-        open_applications_only: bool,
-        experience: str,
-    ) -> int:
-        return count_jobs(
-            dsn=dsn,
-            query=query or None,
-            city=city or None,
-            sponsors_only=sponsors_only,
-            open_applications_only=open_applications_only,
-            experience_level=experience or None,
-        )
+    ) -> tuple[list[StoredJob] | list[dict[str, Any]], int]:
+        """Ranked, typo-tolerant search via Meilisearch when it's up;
+        falls back to a direct Postgres query otherwise. The CLI and
+        /export always use Postgres directly (list_jobs/count_jobs) - the
+        search index is an enhancement over the source of truth, never a
+        single point of failure for the whole tool."""
+        try:
+            return meilisearch_client.search_jobs(
+                query=query or None,
+                city=city or None,
+                sponsors_only=sponsors_only,
+                open_applications_only=open_applications_only,
+                experience_level=experience or None,
+                limit=100,
+            )
+        except Exception:
+            jobs = list_jobs(
+                dsn=dsn,
+                query=query or None,
+                city=city or None,
+                sponsors_only=sponsors_only,
+                open_applications_only=open_applications_only,
+                experience_level=experience or None,
+                limit=100,
+            )
+            total = count_jobs(
+                dsn=dsn,
+                query=query or None,
+                city=city or None,
+                sponsors_only=sponsors_only,
+                open_applications_only=open_applications_only,
+                experience_level=experience or None,
+            )
+            return jobs, total
 
     @app.get("/", response_class=HTMLResponse)
     def index(
@@ -104,8 +112,7 @@ def create_app() -> FastAPI:
         error: str = Query(default=""),
     ) -> HTMLResponse:
         stats = db.sponsor_stats(dsn)
-        jobs = _search_jobs(dsn, query, city, sponsors_only, open_applications_only, experience)
-        total = _count_jobs(dsn, query, city, sponsors_only, open_applications_only, experience)
+        jobs, total = _search(dsn, query, city, sponsors_only, open_applications_only, experience)
         resume_profile = latest_resume_profile(dsn)
         return templates.TemplateResponse(
             request,
@@ -137,9 +144,8 @@ def create_app() -> FastAPI:
         experience: str = Query(default=""),
     ) -> HTMLResponse:
         """htmx partial: just the results fragment, for live filtering as
-        you type against whatever's already stored locally."""
-        jobs = _search_jobs(dsn, query, city, sponsors_only, open_applications_only, experience)
-        total = _count_jobs(dsn, query, city, sponsors_only, open_applications_only, experience)
+        you type."""
+        jobs, total = _search(dsn, query, city, sponsors_only, open_applications_only, experience)
         return templates.TemplateResponse(
             request,
             "_job_results.html",

@@ -11,7 +11,9 @@ from collections.abc import Sequence
 
 from ..db import cursor
 from ..jobs.experience import classify_experience_level
+from ..jobs.ingest import to_search_doc
 from ..resume.parse import latest_resume_profile
+from ..search import meilisearch_client
 
 SPONSOR_BONUS = 5.0
 SKILL_MATCH_WEIGHT = 1.0
@@ -62,7 +64,8 @@ def rescore_jobs(dsn: str | None = None, country: str = "NL") -> int:
     resume_skills = profile.skills if profile else []
 
     with cursor(dsn) as conn:
-        rows = conn.execute("SELECT id, title, location, sponsor_kvk FROM jobs").fetchall()
+        rows = conn.execute("SELECT * FROM jobs").fetchall()
+        docs = []
         for row in rows:
             score = score_job(
                 title=row["title"],
@@ -71,8 +74,17 @@ def rescore_jobs(dsn: str | None = None, country: str = "NL") -> int:
                 resume_skills=resume_skills,
                 country=country,
             )
+            experience_level = classify_experience_level(row["title"])
             conn.execute(
                 "UPDATE jobs SET fit_score = %s, experience_level = %s WHERE id = %s",
-                (score, classify_experience_level(row["title"]), row["id"]),
+                (score, experience_level, row["id"]),
             )
+            docs.append(
+                to_search_doc({**row, "fit_score": score, "experience_level": experience_level})
+            )
+
+    try:
+        meilisearch_client.index_jobs(docs)
+    except Exception as error:  # noqa: BLE001 - best-effort, see meilisearch_client docstring
+        print(f"[search index] skipped: {error}")
     return len(rows)
