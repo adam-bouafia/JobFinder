@@ -1,0 +1,19 @@
+name: Sync IND sponsors
+
+on:
+  schedule:
+    - cron: "0 9 1 * *"
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run jf sync-sponsors
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: monthly IND sponsor sync"
+          file_pattern: data/sponsors_latest.json

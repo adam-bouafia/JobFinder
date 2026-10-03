@@ -1,0 +1,7 @@
+[Unit]
+Description=JobFinder: sync IND recognised-sponsors register
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/JobFinder
+ExecStart=%h/Documents/JobFinder/.venv/bin/jf sync-sponsors

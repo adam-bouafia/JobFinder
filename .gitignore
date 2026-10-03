@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+dist/
+build/
+
+# Data (personal / regenerable)
+data/*.db
+data/*.db-*
+
+# Secrets / local overrides
+.env
+jobfinder.local.toml
+
+# Extension (not built yet)
+extension/node_modules/
+extension/dist/

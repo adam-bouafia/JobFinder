@@ -1,0 +1,17 @@
+{% if query == "" %}
+{% elif result and result.is_sponsor %}
+<div class="result yes">
+  <div class="name">Recognised sponsor: {{ result.matched_name }}</div>
+  <div class="detail">KVK {{ result.kvk }} &middot; match score {{ "%.0f"|format(result.score) }}</div>
+</div>
+{% elif result %}
+<div class="result no">
+  <div class="name">Not found in the IND register</div>
+  <div class="detail">Best score {{ "%.0f"|format(result.score) }} (below match threshold)</div>
+</div>
+{% else %}
+<div class="result no">
+  <div class="name">No sponsor data synced yet</div>
+  <div class="detail">Run <code>jf sync-sponsors</code> first.</div>
+</div>
+{% endif %}
