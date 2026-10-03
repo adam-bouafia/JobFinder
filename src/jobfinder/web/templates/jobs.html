@@ -16,7 +16,7 @@
     <input type="checkbox" name="open_applications_only" value="true" {{ 'checked' if open_applications_only }}>
     Open applications only
   </label>
-  <button type="submit">Apply</button>
+  <button type="submit">Filter</button>
 </form>
 
 {% if jobs %}
@@ -27,7 +27,7 @@
     <div class="company">{{ job.company_name }}{% if job.location %} &middot; {{ job.location }}{% endif %}</div>
     <div class="tags">
       {% if job.fit_score is not none %}
-        <span class="tag fit">fit {{ "%.1f"|format(job.fit_score) }}</span>
+        <span class="tag">fit {{ "%.1f"|format(job.fit_score) }}</span>
       {% endif %}
       {% if job.sponsor_kvk %}
         <span class="tag sponsor">IND sponsor &middot; KVK {{ job.sponsor_kvk }}</span>
@@ -35,7 +35,7 @@
       {% if job.is_open_application %}
         <span class="tag open-app">open application</span>
       {% endif %}
-      <span class="tag" style="background:#f6f6f6;color:#888;">{{ job.source }}</span>
+      <span class="tag">{{ job.source }}</span>
     </div>
     <div><a class="link" href="{{ job.url }}" target="_blank" rel="noopener">View posting &rarr;</a></div>
   </div>

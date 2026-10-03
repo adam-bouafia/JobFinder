@@ -4,70 +4,149 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>JobFinder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="/static/htmx.min.js"></script>
 <style>
-  :root { color-scheme: light dark; }
-  body {
-    font-family: system-ui, -apple-system, sans-serif;
-    max-width: 640px;
-    margin: 3rem auto;
-    padding: 0 1rem;
+  :root {
+    color-scheme: light dark;
+    --fg: #111111;
+    --bg: #ffffff;
+    --muted: #888888;
+    --rule: #e3e3e3;
+    --accent: #111111;
   }
-  h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
-  .meta { color: #6b6b6b; font-size: 0.9rem; margin-bottom: 2rem; }
-  form { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e8e8e8; --bg: #0a0a0a; --muted: #8a8a8a; --rule: #2a2a2a; --accent: #e8e8e8; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--bg);
+    color: var(--fg);
+    max-width: 640px;
+    margin: 4rem auto;
+    padding: 0 1.25rem 4rem;
+    line-height: 1.55;
+  }
+  h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-align: center;
+    margin: 0 0 0.6rem;
+  }
+  .meta {
+    color: var(--muted);
+    font-size: 0.8rem;
+    text-align: center;
+    margin-bottom: 2.5rem;
+  }
+  .meta code { font-size: 0.78rem; }
+  hr {
+    border: none;
+    border-top: 1px solid var(--rule);
+    margin: 2.5rem 0;
+  }
+  code {
+    font-family: inherit;
+    background: transparent;
+    border: 1px solid var(--rule);
+    padding: 0.05rem 0.3rem;
+    font-size: 0.9em;
+  }
+  form { display: flex; gap: 0.6rem; margin-bottom: 1.2rem; }
   input[type=text] {
     flex: 1;
+    font-family: inherit;
     padding: 0.6rem 0.8rem;
-    font-size: 1rem;
-    border: 1px solid #ccc;
-    border-radius: 6px;
+    font-size: 0.95rem;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--rule);
+    border-radius: 0;
   }
+  input[type=text]:focus { outline: none; border-color: var(--fg); }
   button {
+    font-family: inherit;
     padding: 0.6rem 1.2rem;
-    font-size: 1rem;
-    border: 1px solid #1a1a1a;
-    background: #1a1a1a;
-    color: #fff;
-    border-radius: 6px;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border: 1px solid var(--fg);
+    background: var(--bg);
+    color: var(--fg);
+    border-radius: 0;
     cursor: pointer;
+    transition: background 0.1s, color 0.1s;
   }
+  button:hover { background: var(--fg); color: var(--bg); }
   .result {
-    padding: 0.9rem 1rem;
-    border-radius: 6px;
+    padding: 0.9rem 0;
+    border-top: 1px solid var(--rule);
     margin-top: 0.5rem;
   }
-  .result.yes { background: #e6f4ea; border: 1px solid #34a853; color: #1a1a1a; }
-  .result.no { background: #fce8e6; border: 1px solid #ea4335; color: #1a1a1a; }
   .result .name { font-weight: 600; }
-  .result .detail { color: #555; font-size: 0.85rem; margin-top: 0.2rem; }
-  footer { margin-top: 3rem; color: #9a9a9a; font-size: 0.8rem; }
-  a { color: inherit; }
-  nav { display: flex; gap: 1rem; margin-bottom: 1.5rem; font-size: 0.9rem; }
-  nav a { text-decoration: none; color: #6b6b6b; }
-  nav a.active { color: #1a1a1a; font-weight: 600; }
-  .filters { display: flex; gap: 1rem; margin-bottom: 1.2rem; font-size: 0.9rem; flex-wrap: wrap; }
-  .filters label { display: flex; align-items: center; gap: 0.35rem; cursor: pointer; }
-  .job-list { display: flex; flex-direction: column; gap: 0.6rem; }
-  .job-card {
-    padding: 0.8rem 1rem;
-    border-radius: 6px;
-    border: 1px solid #ddd;
-  }
-  .job-card .title { font-weight: 600; }
-  .job-card .company { color: #555; }
-  .job-card .tags { margin-top: 0.3rem; display: flex; gap: 0.4rem; flex-wrap: wrap; }
-  .tag {
-    display: inline-block;
-    padding: 0.1rem 0.5rem;
-    border-radius: 999px;
+  .result .name::before { content: "\25cf  "; }
+  .result.no .name { color: var(--muted); }
+  .result.no .name::before { content: "\25cb  "; }
+  .result .detail { color: var(--muted); font-size: 0.8rem; margin-top: 0.3rem; }
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--rule);
+    color: var(--muted);
     font-size: 0.75rem;
-    font-weight: 600;
+    text-align: center;
+    letter-spacing: 0.02em;
   }
-  .tag.sponsor { background: #e6f4ea; color: #1e7e34; }
-  .tag.open-app { background: #e8f0fe; color: #1a56db; }
-  .tag.fit { background: #f1f1f1; color: #444; }
-  .job-card a.link { font-size: 0.85rem; }
+  a { color: inherit; }
+  nav {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    margin-bottom: 3rem;
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  nav a { text-decoration: none; color: var(--muted); }
+  nav a.active { color: var(--fg); border-bottom: 1px solid var(--fg); padding-bottom: 0.2rem; }
+  .filters {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .filters label { display: flex; align-items: center; gap: 0.4rem; cursor: pointer; color: var(--muted); }
+  .job-list { display: flex; flex-direction: column; }
+  .job-card {
+    padding: 1.1rem 0;
+    border-top: 1px solid var(--rule);
+  }
+  .job-card:last-child { border-bottom: 1px solid var(--rule); }
+  .job-card .title { font-weight: 600; }
+  .job-card .company { color: var(--muted); font-size: 0.85rem; margin-top: 0.1rem; }
+  .job-card .tags {
+    margin-top: 0.5rem;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .tag.sponsor { color: var(--fg); }
+  .tag.sponsor::before { content: "\25cf  "; }
+  .tag.open-app::before { content: "\2192  "; }
+  .job-card a.link { font-size: 0.78rem; display: inline-block; margin-top: 0.5rem; }
 </style>
 </head>
 <body>
