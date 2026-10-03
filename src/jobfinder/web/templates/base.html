@@ -45,6 +45,8 @@
     margin-bottom: 2.5rem;
   }
   .meta code { font-size: 0.78rem; }
+  .export-links a { margin: 0 0.5rem; text-decoration: underline; }
+  .export-links a:first-of-type { margin-left: 0.5rem; }
   hr {
     border: none;
     border-top: 1px solid var(--rule);
@@ -147,6 +149,18 @@
   .tag.sponsor::before { content: "\25cf  "; }
   .tag.open-app::before { content: "\2192  "; }
   .job-card a.link { font-size: 0.78rem; display: inline-block; margin-top: 0.5rem; }
+  .site-footer {
+    margin-top: 2rem;
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .site-footer a { text-decoration: none; }
+  .site-footer a:hover { color: var(--fg); }
 </style>
 </head>
 <body>
@@ -155,5 +169,11 @@
   <a href="/jobs" class="{{ 'active' if active_nav == 'jobs' else '' }}">Jobs</a>
 </nav>
 {% block content %}{% endblock %}
+<div class="site-footer">
+  <a href="https://github.com/adam-bouafia" target="_blank" rel="noopener">GitHub</a>
+  <a href="https://www.linkedin.com/in/adam-bouafia" target="_blank" rel="noopener">LinkedIn</a>
+  <a href="https://adam-bouafia.github.io" target="_blank" rel="noopener">Portfolio</a>
+  <a href="https://paypal.me/AdamBouafia" target="_blank" rel="noopener">Buy Me a Coffee</a>
+</div>
 </body>
 </html>
