@@ -18,8 +18,8 @@ that accept open applications.
 - A CLI (`jf`) and a local web UI (`jf serve`, FastAPI + Jinja2 + htmx)
   both sit on the same backend code - neither duplicates the other's
   logic, they're two views onto `sponsors/match.py` etc.
-- TypeScript owns the Chrome extension (Manifest V3), when it's built -
-  the only other language in the project.
+- TypeScript owns the Chrome extension (Manifest V3) - the only other
+  language in the project.
 - SQLite for storage (single user, trivial data volume, zero ops).
 
 ## Hosting
@@ -55,8 +55,8 @@ decision is actually needed, not an implemented default.
 flowchart TB
     subgraph EXT_SRC["External sources, read-only"]
         IND["IND public register\nHTML table, updates monthly"]
-        ADZUNA["Adzuna job search API\n(planned)"]
-        ATSSRC["Company ATS JSON endpoints\nGreenhouse / Lever / Ashby / Workable ...\n(planned)"]
+        ADZUNA["Adzuna job search API\n(needs free API credentials)"]
+        ATSSRC["Company ATS JSON endpoints\nGreenhouse / Lever / Ashby / Recruitee / Workable"]
         PAGE["LinkedIn / Indeed page\nrendered in your own logged-in browser"]
     end
 
@@ -66,9 +66,9 @@ flowchart TB
         MATCH["sponsors/match.py\nrapidfuzz token_set_ratio"]
         EXPORT["sponsors/export.py"]
         DB[("SQLite data/jobfinder.db")]
-        RESUME["resume/extract.py, ocr.py, fields.py\n(planned)"]
-        JOBS["jobs/adzuna.py, jobs/ats/*\n(planned)"]
-        SCORE["matching/score.py\n(planned)"]
+        RESUME["resume/extract.py, ocr.py, fields.py"]
+        JOBS["jobs/adzuna.py, jobs/ats/*, jobs/ingest.py"]
+        SCORE["matching/score.py"]
         CLI["cli.py - Typer app: jf"]
         WEBAPP["web/app.py - FastAPI"]
     end
@@ -117,19 +117,18 @@ flowchart TB
     classDef webui fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
     classDef extension fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
     classDef enhancement fill:#fff8e1,stroke:#f9a825,stroke-width:1.5px,stroke-dasharray:3 3,color:#e65100
-    classDef planned fill:#fafafa,stroke:#bdbdbd,stroke-width:1px,stroke-dasharray:4 3,color:#9e9e9e
 
-    class IND,PAGE source
-    class ADZUNA,ATSSRC,JOBS,RESUME,SCORE planned
-    class SCRAPE,NORM,MATCH,EXPORT,DB,CLI,WEBAPP core
+    class IND,PAGE,ADZUNA,ATSSRC source
+    class SCRAPE,NORM,MATCH,EXPORT,DB,CLI,WEBAPP,RESUME,JOBS,SCORE core
     class DI,LLM enhancement
     class BUNDLE,CONTENT,MATCHERTS,OVERLAY extension
     class TEMPLATES webui
 ```
 
-Blue = built, purple = the Chrome extension (built), green = the web UI
-(built), amber dashed = optional opt-in enhancement, gray dashed = planned
-but not built yet.
+Blue = built (the whole core package, every phase), purple = the Chrome
+extension (built), green = the web UI (built), gray = an external source
+JobFinder reads from, amber dashed = optional opt-in enhancement (the only
+pieces still off by default).
 
 ## Sponsor registry sync
 
@@ -178,18 +177,24 @@ below 57 across every adversarial case tried). See the docstring on
 | Posture | Risk | Guardrail |
 | --- | --- | --- |
 | IND register scraping | Low - government register published for exactly this lookup purpose; robots.txt allows it; no reuse restriction found | One GET per monthly sync, descriptive User-Agent, abort loudly if row count craters or parsing yields zero rows |
-| LinkedIn/Indeed server-side bulk scraping | High - ToS risk, bot-detection fragility, risk to the account doing it | Avoid entirely. Future job ingestion uses Adzuna's API and direct ATS JSON endpoints instead |
+| LinkedIn/Indeed server-side bulk scraping | High - ToS risk, bot-detection fragility, risk to the account doing it | Avoided entirely - job ingestion uses Adzuna's API and direct ATS JSON endpoints instead, verified live against a real company's public Greenhouse board |
 | Chrome extension badge overlay | Materially lower - reads only the page already rendered in an authenticated session, same category as an ad blocker | Stays client-side only, no server-side fetch of LinkedIn/Indeed pages. Follows from this: the LinkedIn/Indeed CSS selectors in `extension/src/content/site-adapters/` are best-effort, never verified against a live session - see `extension/README.md` |
 | Resume content (PII) | N/A for local-only parsing | Any third-party parsing tier is opt-in only, never default |
 | Web UI reachability | N/A while local-only | Defaults to `127.0.0.1`; opening it up is an explicit `--host` choice, see Hosting above |
 
 ## Roadmap
 
-1. **Sponsor registry sync + fuzzy match** (done) - zero external API dependency, the actual differentiator.
-2. **CLI + local web UI** (done) - `jf` commands and `jf serve` (FastAPI + Jinja2 + htmx), both backed by the same matching code. Local-only by default; see Hosting above for remote-access options.
-3. **Chrome extension badge overlay** (done) - Vite + CRXJS + TypeScript MV3, bundled sponsor snapshot, in-browser `token_set_ratio` port. Verified end-to-end in real Chrome against a simulated LinkedIn navigation; real selectors still need checking against a live session, see `extension/README.md`.
-4. **Resume OCR + structured extraction** (next) - local-first (pdfplumber/pytesseract), optional opt-in cloud tiers.
-5. **Broader job ingestion + open-application tracking** - legitimate APIs/ATS endpoints only, never bulk LinkedIn/Indeed scraping.
+All five phases from the original plan are built:
+
+1. **Sponsor registry sync + fuzzy match** - zero external API dependency, the actual differentiator.
+2. **CLI + local web UI** - `jf` commands and `jf serve` (FastAPI + Jinja2 + htmx), both backed by the same matching code. Local-only by default; see Hosting above for remote-access options.
+3. **Chrome extension badge overlay** - Vite + CRXJS + TypeScript MV3, bundled sponsor snapshot, in-browser `token_set_ratio` port. Verified end-to-end in real Chrome against a simulated LinkedIn navigation; real selectors still need checking against a live session, see `extension/README.md`.
+4. **Resume OCR + structured extraction** - `pdfplumber` text layer, per-page `pytesseract`/`pdf2image` OCR fallback (needs the `tesseract` system binary, not just a pip package), heuristic skills/experience/education extraction - no LLM call, no persona-biased keyword list.
+5. **Job ingestion + open-application tracking + resume-derived scoring** - direct ATS JSON APIs (verified live against Stripe's real Greenhouse board) and Adzuna (needs free credentials), enriched with sponsor status and an open-application flag at ingest time via `matching/score.py`, generalizing job-research's hardcoded fit_score into resume-derived weights.
+
+Explicitly not built, by design: automatic discovery of which sponsor
+uses which ATS/slug (job-research's DuckDuckGo-based approach was
+deliberately not repeated - pass a known `--slug` instead).
 
 Full reasoning and the hackathon-credential/job-research research behind
 these decisions: `~/.claude/plans/zippy-pondering-scroll.md`.
