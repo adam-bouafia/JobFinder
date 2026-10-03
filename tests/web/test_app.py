@@ -98,7 +98,12 @@ def client_with_jobs(tmp_path: Path) -> TestClient:
     ingest_jobs(
         [
             JobListing(
-                "Booking.com", "Senior Backend Engineer", "Amsterdam", "https://x/1", "test"
+                "Booking.com",
+                "Senior Backend Engineer",
+                "Amsterdam",
+                "https://x/1",
+                "test",
+                description="Own our payments backend.",
             ),
             JobListing("Unrelated Co", "General Application", None, "https://x/2", "test"),
         ],
@@ -116,6 +121,11 @@ def test_index_lists_jobs_by_default(client_with_jobs: TestClient) -> None:
     assert "Senior Backend Engineer" in response.text
     assert "Booking.com" in response.text
     assert "2 jobs found" in response.text
+
+
+def test_index_shows_job_description(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/")
+    assert "Own our payments backend." in response.text
 
 
 def test_index_with_no_jobs_shows_empty_state(tmp_path: Path) -> None:

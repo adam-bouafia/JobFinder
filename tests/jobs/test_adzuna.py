@@ -34,6 +34,7 @@ def test_search_parses_results(monkeypatch: pytest.MonkeyPatch) -> None:
                         "company": {"display_name": "Acme B.V."},
                         "location": {"display_name": "Amsterdam, Netherlands"},
                         "redirect_url": "https://adzuna.com/job/1",
+                        "description": "Own our cloud platform end to end.",
                     }
                 ]
             }
@@ -47,6 +48,7 @@ def test_search_parses_results(monkeypatch: pytest.MonkeyPatch) -> None:
     assert jobs[0].title == "Cloud Engineer"
     assert jobs[0].location == "Amsterdam, Netherlands"
     assert jobs[0].source == "adzuna"
+    assert jobs[0].description == "Own our cloud platform end to end."
 
 
 def test_search_handles_missing_company_or_location(monkeypatch: pytest.MonkeyPatch) -> None:

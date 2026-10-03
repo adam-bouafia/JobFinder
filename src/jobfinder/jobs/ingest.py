@@ -50,8 +50,8 @@ def ingest_jobs(listings: list[JobListing], db_path: Path = DB_PATH) -> int:
                 INSERT OR IGNORE INTO jobs
                     (company_name, title, location, url, source,
                      is_open_application, sponsor_kvk, sponsor_match_score,
-                     experience_level, fetched_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     experience_level, description, fetched_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     listing.company_name,
@@ -63,6 +63,7 @@ def ingest_jobs(listings: list[JobListing], db_path: Path = DB_PATH) -> int:
                     sponsor_kvk,
                     sponsor_score,
                     classify_experience_level(listing.title),
+                    listing.description,
                     now,
                 ),
             )
@@ -83,6 +84,7 @@ class StoredJob:
     sponsor_kvk: str | None
     fit_score: float | None
     experience_level: str | None
+    description: str | None
     fetched_at: str
 
     @classmethod
@@ -98,6 +100,7 @@ class StoredJob:
             sponsor_kvk=row["sponsor_kvk"],
             fit_score=row["fit_score"],
             experience_level=row["experience_level"],
+            description=row["description"],
             fetched_at=row["fetched_at"],
         )
 

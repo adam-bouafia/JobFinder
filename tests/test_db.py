@@ -51,6 +51,7 @@ def test_connect_migrates_a_pre_existing_jobs_table_missing_experience_level(
     try:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
         assert "experience_level" in columns
+        assert "description" in columns
     finally:
         conn.close()
 

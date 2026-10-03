@@ -59,6 +59,7 @@ def search(
 def _to_listing(item: dict[str, object]) -> JobListing:
     company = item.get("company")
     location = item.get("location")
+    description = item.get("description")
     company_name = company.get("display_name", "Unknown") if isinstance(company, dict) else None
     location_name = location.get("display_name") if isinstance(location, dict) else None
     return JobListing(
@@ -67,4 +68,5 @@ def _to_listing(item: dict[str, object]) -> JobListing:
         location=location_name,
         url=str(item.get("redirect_url", "")),
         source="adzuna",
+        description=description if isinstance(description, str) else None,
     )

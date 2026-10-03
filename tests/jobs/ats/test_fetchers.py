@@ -28,6 +28,7 @@ def test_greenhouse_fetch_parses_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
                 "title": "Backend Engineer",
                 "location": {"name": "Amsterdam, Netherlands"},
                 "absolute_url": "https://boards.greenhouse.io/acme/jobs/1",
+                "content": "<p>Build <b>backend</b> services.</p>",
             }
         ]
     }
@@ -39,6 +40,7 @@ def test_greenhouse_fetch_parses_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
     assert jobs[0].title == "Backend Engineer"
     assert jobs[0].location == "Amsterdam, Netherlands"
     assert jobs[0].source == "greenhouse"
+    assert jobs[0].description == "Build backend services."
 
 
 def test_greenhouse_fetch_returns_empty_on_non_200(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -52,6 +54,7 @@ def test_lever_fetch_parses_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
             "text": "Staff Engineer",
             "categories": {"location": "Remote"},
             "hostedUrl": "https://jobs.lever.co/acme/1",
+            "description": "<p>Lead our platform team.</p>",
         }
     ]
     monkeypatch.setattr(httpx, "get", lambda *a, **k: FakeResponse(200, payload))
@@ -62,6 +65,7 @@ def test_lever_fetch_parses_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
     assert jobs[0].title == "Staff Engineer"
     assert jobs[0].location == "Remote"
     assert jobs[0].source == "lever"
+    assert jobs[0].description == "Lead our platform team."
 
 
 def test_ashby_fetch_parses_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -72,6 +76,7 @@ def test_ashby_fetch_parses_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
                 "locationName": "Amsterdam",
                 "jobUrl": "https://jobs.ashbyhq.com/acme/1",
                 "id": "1",
+                "descriptionHtml": "<p>Own our platform.</p>",
             }
         ]
     }
@@ -82,6 +87,7 @@ def test_ashby_fetch_parses_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(jobs) == 1
     assert jobs[0].title == "Platform Engineer"
     assert jobs[0].source == "ashby"
+    assert jobs[0].description == "Own our platform."
 
 
 def test_recruitee_fetch_parses_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -91,6 +97,7 @@ def test_recruitee_fetch_parses_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
                 "title": "SRE",
                 "location": "Amsterdam",
                 "careers_url": "https://acme.recruitee.com/o/sre",
+                "description": "<p>Keep things running.</p>",
             }
         ]
     }
@@ -101,6 +108,7 @@ def test_recruitee_fetch_parses_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(jobs) == 1
     assert jobs[0].title == "SRE"
     assert jobs[0].source == "recruitee"
+    assert jobs[0].description == "Keep things running."
 
 
 def test_workable_fetch_parses_jobs(monkeypatch: pytest.MonkeyPatch) -> None:

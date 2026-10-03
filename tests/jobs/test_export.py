@@ -21,6 +21,7 @@ SAMPLE_JOBS = [
         sponsor_kvk="31047344",
         fit_score=6.0,
         experience_level="mid",
+        description="Build and maintain backend services.",
         fetched_at="2026-10-01T00:00:00",
     ),
     StoredJob(
@@ -34,6 +35,7 @@ SAMPLE_JOBS = [
         sponsor_kvk=None,
         fit_score=None,
         experience_level=None,
+        description=None,
         fetched_at="2026-10-01T00:00:00",
     ),
 ]

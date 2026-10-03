@@ -12,3 +12,4 @@ class JobListing:
     location: str | None
     url: str
     source: str
+    description: str | None = None

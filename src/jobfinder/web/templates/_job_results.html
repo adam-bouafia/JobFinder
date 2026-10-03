@@ -30,6 +30,12 @@
       {% endif %}
       <span class="tag">{{ job.source }}</span>
     </div>
+    {% if job.description %}
+    <details class="description">
+      <summary>Description</summary>
+      <p>{{ job.description }}</p>
+    </details>
+    {% endif %}
     <div><a class="link" href="{{ job.url }}" target="_blank" rel="noopener">View posting &rarr;</a></div>
   </div>
   {% endfor %}

@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     sponsor_match_score  REAL,
     fit_score            REAL,
     experience_level     TEXT,
+    description          TEXT,
     fetched_at           TEXT NOT NULL,
     UNIQUE(url)
 );
@@ -73,6 +74,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
     existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
     if "experience_level" not in existing_columns:
         conn.execute("ALTER TABLE jobs ADD COLUMN experience_level TEXT")
+    if "description" not in existing_columns:
+        conn.execute("ALTER TABLE jobs ADD COLUMN description TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_experience_level ON jobs(experience_level)")
 
 
