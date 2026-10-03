@@ -21,8 +21,12 @@ scale-to-zero on idle naturally does this for a low-traffic personal
 tool; not worth the complexity of reload-per-request for once-a-month
 freshness).
 
-Search-jobs (Adzuna) isn't wired up here - the web UI doesn't expose it
-(CLI-only today), so no Modal Secret is configured for those credentials.
+Job search (Adzuna) runs here too, via `seed_jobs` - it reads the
+`jobfinder-adzuna` Modal Secret (ADZUNA_APP_ID/ADZUNA_APP_KEY) and writes
+into this same volume. Run it once manually after a fresh volume (see
+deploy/README.md); it isn't scheduled, since `sync_sponsors` already
+covers the once-a-month cadence this tool actually needs and repeated
+Adzuna calls would just re-fetch mostly the same postings.
 """
 
 from __future__ import annotations
@@ -108,3 +112,28 @@ def sync_sponsors() -> None:
     sponsors_export.export_snapshot()
     volume.commit()
     print(f"Synced {count} sponsors")
+
+
+@app.function(
+    image=image,
+    volumes={DATA_MOUNT: volume},
+    secrets=[modal.Secret.from_name("jobfinder-adzuna")],
+    timeout=300,
+)
+def seed_jobs(query: str = "software engineer", country: str = "nl") -> None:
+    """Mirrors `jf search-jobs` + `jf rescore-jobs`, for the deployed
+    instance's own volume. Not scheduled - run manually (see
+    deploy/README.md) to seed or top up the live site's job listings.
+    """
+    import os
+
+    os.environ["JOBFINDER_DATA_DIR"] = DATA_MOUNT
+    from jobfinder.jobs.adzuna import search as adzuna_search
+    from jobfinder.jobs.ingest import ingest_jobs
+    from jobfinder.matching.score import rescore_jobs
+
+    listings = adzuna_search(query, country=country)
+    inserted = ingest_jobs(listings)
+    rescored = rescore_jobs()
+    volume.commit()
+    print(f"Found {len(listings)} roles, {inserted} new, {rescored} rescored")

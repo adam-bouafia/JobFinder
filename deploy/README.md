@@ -53,11 +53,13 @@ subdomain customization above is the free alternative and already applied.
   independent of the local systemd timer / GitHub Actions cron - the
   deployed instance has its own volume, so it needs its own refresh.
 
+- Adzuna credentials live in a Modal Secret (`jobfinder-adzuna`, created
+  via `modal secret create jobfinder-adzuna --from-dotenv .env`), used by
+  the `seed_jobs` function below - the web UI itself still doesn't call
+  Adzuna directly, it only ever reads what's already in the volume.
+
 ### What it doesn't do
 
-- No Adzuna credentials are wired up (`jf search-jobs` isn't exposed in
-  the web UI today, only the CLI) - if that changes, add them as a Modal
-  Secret (`modal secret create`), not hardcoded here.
 - No custom domain / auth - it's a Modal-provided URL, unauthenticated.
   Fine for a personal tool; revisit if this becomes something other
   people use.
@@ -68,7 +70,15 @@ The volume starts empty. After the first deploy, seed it once:
 
 ```bash
 uv run modal run deploy/modal_app.py::sync_sponsors
+uv run modal run deploy/modal_app.py::seed_jobs
 ```
 
-(or just wait for the next scheduled run - but the web UI will show "no
-sponsor data yet" until then.)
+(or just wait for the next scheduled sponsor sync - but the web UI will
+show "no sponsor data yet" / "0 jobs found" until then.)
+
+`seed_jobs` isn't scheduled - run it again manually with a different
+`--query` to top up the live site with more roles:
+
+```bash
+uv run modal run deploy/modal_app.py::seed_jobs --query "platform engineer"
+```
