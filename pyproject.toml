@@ -17,6 +17,7 @@ dependencies = [
     "pytesseract>=0.3.13",
     "pdf2image>=1.17.0",
     "python-dotenv>=1.2.4",
+    "reportlab>=5.0.1",
 ]
 
 [project.scripts]
@@ -50,7 +51,7 @@ python_version = "3.12"
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["pytesseract.*", "pdf2image.*"]
+module = ["pytesseract.*", "pdf2image.*", "reportlab.*"]
 ignore_missing_imports = true
 
 [dependency-groups]
@@ -60,6 +61,5 @@ dev = [
     "mypy>=2.4.0",
     "pillow>=12.3.0",
     "pytest>=9.1.1",
-    "reportlab>=5.0.1",
     "ruff>=0.16.10",
 ]

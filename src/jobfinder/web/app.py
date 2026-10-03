@@ -11,15 +11,22 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import db
+from ..jobs.export import to_markdown, to_pdf_bytes, to_text
 from ..jobs.ingest import list_jobs
 from ..paths import DB_PATH
 from ..sponsors.match import match_company
+
+EXPORT_MEDIA_TYPES = {
+    "md": "text/markdown",
+    "txt": "text/plain",
+    "pdf": "application/pdf",
+}
 
 WEB_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
@@ -87,6 +94,35 @@ def create_app() -> FastAPI:
                 "open_applications_only": open_applications_only,
                 "active_nav": "jobs",
             },
+        )
+
+    @app.get("/jobs/export")
+    def jobs_export(
+        db_path: Annotated[Path, Depends(get_db_path)],
+        fmt: str = Query(default="md", alias="format"),
+        sponsors_only: bool = Query(default=False),
+        open_applications_only: bool = Query(default=False),
+    ) -> Response:
+        if fmt not in EXPORT_MEDIA_TYPES:
+            raise HTTPException(status_code=400, detail="format must be md, txt, or pdf")
+
+        jobs = list_jobs(
+            db_path=db_path,
+            sponsors_only=sponsors_only,
+            open_applications_only=open_applications_only,
+            limit=500,
+        )
+        if fmt == "md":
+            content: bytes = to_markdown(jobs).encode("utf-8")
+        elif fmt == "txt":
+            content = to_text(jobs).encode("utf-8")
+        else:
+            content = to_pdf_bytes(jobs)
+
+        return Response(
+            content=content,
+            media_type=EXPORT_MEDIA_TYPES[fmt],
+            headers={"Content-Disposition": f'attachment; filename="jobfinder-export.{fmt}"'},
         )
 
     return app

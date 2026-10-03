@@ -11,6 +11,7 @@ from rich.console import Console
 from .jobs import adzuna as jobs_adzuna
 from .jobs.ats import ATS_FETCHERS
 from .jobs.ats import fetch as ats_fetch
+from .jobs.export import export_jobs
 from .jobs.ingest import ingest_jobs, list_jobs
 from .matching.score import rescore_jobs
 from .paths import PROJECT_ROOT
@@ -147,6 +148,29 @@ def cmd_list_jobs(
         console.print(
             f"[{fit}] {job.company_name} - {job.title} ({sponsor_tag}){open_app_tag}\n    {job.url}"
         )
+
+
+@app.command("export-jobs")
+def cmd_export_jobs(
+    path: Path = typer.Argument(..., help="Output file - .md, .txt, or .pdf."),
+    sponsors_only: bool = typer.Option(False, help="Only IND-recognised-sponsor companies."),
+    open_applications_only: bool = typer.Option(False, help="Only open/speculative postings."),
+    min_fit: float | None = typer.Option(None, help="Minimum fit score."),
+    limit: int = typer.Option(200, help="Max rows to export."),
+) -> None:
+    """Export stored jobs to Markdown, text, or PDF - format from the extension."""
+    jobs = list_jobs(
+        sponsors_only=sponsors_only,
+        open_applications_only=open_applications_only,
+        min_fit_score=min_fit,
+        limit=limit,
+    )
+    try:
+        export_jobs(jobs, path)
+    except ValueError as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(code=1) from error
+    console.print(f"[green]Wrote {len(jobs)} jobs to {path}[/green]")
 
 
 @app.command("serve")

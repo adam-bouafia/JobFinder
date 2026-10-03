@@ -134,3 +134,38 @@ def test_jobs_view_with_no_jobs_shows_empty_state(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "No jobs match" in response.text
+
+
+def test_jobs_export_markdown(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/jobs/export", params={"format": "md"})
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert "attachment" in response.headers["content-disposition"]
+    assert "Backend Engineer" in response.text
+
+
+def test_jobs_export_text(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/jobs/export", params={"format": "txt"})
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    assert "Backend Engineer" in response.text
+
+
+def test_jobs_export_pdf(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/jobs/export", params={"format": "pdf"})
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF-")
+
+
+def test_jobs_export_respects_filters(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get(
+        "/jobs/export", params={"format": "md", "sponsors_only": "true"}
+    )
+    assert "Backend Engineer" in response.text
+    assert "General Application" not in response.text
+
+
+def test_jobs_export_rejects_unknown_format(client_with_jobs: TestClient) -> None:
+    response = client_with_jobs.get("/jobs/export", params={"format": "docx"})
+    assert response.status_code == 400
