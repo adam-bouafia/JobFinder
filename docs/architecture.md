@@ -25,33 +25,25 @@ that accept open applications.
   being strictly single-user-local: Neon gives a real `DATABASE_URL` any
   deployment (Modal or otherwise) can reach, without standing up and
   operating a database server by hand.
+- Meilisearch, self-hosted on Modal, for search - a derived, rebuildable
+  ranked/typo-tolerant index over the jobs table, never the system of
+  record. Not backed by a Modal Volume: a real Meilisearch bug ("failed
+  to infer the version of the database") showed up on that filesystem,
+  the same category of non-standard-write-durability problem SQLite-on-
+  a-Volume had - runs on the container's own local disk instead, which
+  is fine since `rescore_jobs()` already reindexes everything as a side
+  effect any time it runs.
 
 ## Hosting
 
-Runs local-first by default: `jf serve` binds `127.0.0.1` only, so it's
-reachable from this machine and nowhere else unless you change `--host`.
-That's a deliberate default, not a placeholder - nothing here needs to be
-always-on or public, and keeping it local-only is the simplest way to avoid
-exposing a personal tool (eventually holding resume PII) to the network.
-
-If/when remote access is wanted:
-
-- **Private access from your other devices (phone, laptop elsewhere)**:
-  [Tailscale](https://tailscale.com) (or `cloudflared tunnel`) in front of
-  `jf serve`. Free for personal use, keeps the tool off the public
-  internet entirely, no code changes needed. This is the recommended next
-  step if "host it" just means "reach it from somewhere other than this
-  machine."
-- **Actually public / shareable with others**: a small always-on host -
-  [Fly.io](https://fly.io)'s free tier is the lowest-friction, vendor-
-  neutral option for a single small FastAPI container. Azure Container
-  Apps (consumption plan, scale-to-zero) is the alternative if the Azure
-  portfolio angle matters more than cost - note GitHub Student Pack /
-  Azure for Students benefits may lapse now that the MSc is finished, so
-  don't assume that credit is available without checking first.
-
-Neither of these is provisioned - this section is guidance for when the
-decision is actually needed, not an implemented default.
+`jf serve` binds `127.0.0.1` by default for purely local use. Separately,
+the app is also deployed on [Modal](https://modal.com) (see `deploy/`),
+auto-deploying on every push to `main` via
+`.github/workflows/deploy-modal.yml`. The two aren't mutually exclusive:
+local-first stays the default for quick local testing, the Modal
+deployment is the actually-used, always-reachable instance - see
+`deploy/README.md` for the full setup (Postgres via Neon, search via
+self-hosted Meilisearch, secrets).
 
 ## System architecture
 
@@ -60,6 +52,7 @@ flowchart TB
     subgraph EXT_SRC["External sources, read-only"]
         IND["IND public register\nHTML table, updates monthly"]
         ATSSRC["Company ATS JSON endpoints\nGreenhouse / Lever / Ashby / Recruitee / Workable\n(the job's own direct link, no aggregator)"]
+        JSEARCH["JSearch (RapidAPI)\nGoogle for Jobs aggregation\nkept only if the apply link's domain\nmatches the employer - CLI-only, jf search-jobs"]
         PAGE["LinkedIn / Indeed page\nrendered in your own logged-in browser"]
     end
 
@@ -68,9 +61,10 @@ flowchart TB
         NORM["sponsors/normalize.py"]
         MATCH["sponsors/match.py\nrapidfuzz token_set_ratio"]
         EXPORT["sponsors/export.py"]
-        DB[("PostgreSQL (Neon)")]
+        DB[("PostgreSQL (Neon)\nsystem of record")]
+        SEARCH[("Meilisearch\nderived, rebuildable index")]
         RESUME["resume/extract.py, ocr.py, fields.py"]
-        JOBS["jobs/ats/*, jobs/ingest.py"]
+        JOBS["jobs/ats/*, jobs/jsearch.py, jobs/ingest.py"]
         SCORE["matching/score.py"]
         CLI["cli.py - Typer app: jf"]
         WEBAPP["web/app.py - FastAPI"]
@@ -88,8 +82,8 @@ flowchart TB
         OVERLAY["overlay.ts\nIND Recognised Sponsor badge"]
     end
 
-    subgraph WEB["Local web UI, jf serve\n127.0.0.1 by default"]
-        TEMPLATES["Jinja2 templates + htmx\nsponsor status, company search"]
+    subgraph WEB["Web UI, jf serve\n127.0.0.1 locally, also deployed on Modal"]
+        TEMPLATES["Jinja2 templates + htmx\nsearch, filters, company lookup"]
     end
 
     IND -->|"polite monthly GET"| SCRAPE
@@ -102,13 +96,17 @@ flowchart TB
     RESUME -. "optional, gated" .-> LLM
 
     ATSSRC --> JOBS
+    JSEARCH --> JOBS
     JOBS --> DB --> SCORE --> DB
+    DB -. "reindexed on ingest/rescore" .-> SEARCH
 
     CLI --> SCRAPE
     CLI --> RESUME
     CLI --> JOBS
     CLI --> SCORE
-    DB --> WEBAPP --> TEMPLATES
+    SEARCH -->|"ranked, typo-tolerant"| WEBAPP
+    DB -.->|"fallback if search is down"| WEBAPP
+    WEBAPP --> TEMPLATES
 
     PAGE --> CONTENT --> MATCHERTS
     BUNDLE --> MATCHERTS
@@ -120,8 +118,8 @@ flowchart TB
     classDef extension fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
     classDef enhancement fill:#fff8e1,stroke:#f9a825,stroke-width:1.5px,stroke-dasharray:3 3,color:#e65100
 
-    class IND,PAGE,ATSSRC source
-    class SCRAPE,NORM,MATCH,EXPORT,DB,CLI,WEBAPP,RESUME,JOBS,SCORE core
+    class IND,PAGE,ATSSRC,JSEARCH source
+    class SCRAPE,NORM,MATCH,EXPORT,DB,SEARCH,CLI,WEBAPP,RESUME,JOBS,SCORE core
     class DI,LLM enhancement
     class BUNDLE,CONTENT,MATCHERTS,OVERLAY extension
     class TEMPLATES webui
@@ -180,7 +178,7 @@ below 57 across every adversarial case tried). See the docstring on
 | --- | --- | --- |
 | IND register scraping | Low - government register published for exactly this lookup purpose; robots.txt allows it; no reuse restriction found | One GET per monthly sync, descriptive User-Agent, abort loudly if row count craters or parsing yields zero rows |
 | LinkedIn/Indeed server-side bulk scraping | High - ToS risk, bot-detection fragility, risk to the account doing it | Avoided entirely - job ingestion uses direct ATS JSON endpoints instead, verified live against a real company's public Greenhouse board |
-| Job aggregator APIs (e.g. Adzuna) | Attribution/branding terms (e.g. a required "Jobs by Adzuna" badge, checked against developer.adzuna.com/docs/terms_of_service) conflict with a clean, direct-to-employer open-source product | Not used - ingestion is direct-from-ATS only, so every listing is the employer's own link with no third-party attribution obligation |
+| Job aggregator APIs | Adzuna's terms (developer.adzuna.com/docs/terms_of_service) require a visible "Jobs by Adzuna" badge - conflicts with a clean, direct-to-employer open-source product, tried then dropped | JSearch (RapidAPI, openwebninja.com/terms) checked instead: commercial API-data use is explicitly licensed, no attribution badge required - but its own `job_apply_is_direct` flag turned out not to mean "employer's own domain" (verified live: every one of 10 real results was `false`, including genuine employer career pages), so results are filtered by apply-link-domain-vs-employer-name match (rapidfuzz) instead, CLI-only given the 200 req/month free tier |
 | Chrome extension badge overlay | Materially lower - reads only the page already rendered in an authenticated session, same category as an ad blocker | Stays client-side only, no server-side fetch of LinkedIn/Indeed pages. Follows from this: the LinkedIn/Indeed CSS selectors in `extension/src/content/site-adapters/` are best-effort, never verified against a live session - see `extension/README.md` |
 | Resume content (PII) | N/A for local-only parsing | Any third-party parsing tier is opt-in only, never default |
 | Web UI reachability | N/A while local-only | Defaults to `127.0.0.1`; opening it up is an explicit `--host` choice, see Hosting above |
@@ -193,12 +191,18 @@ All five phases from the original plan are built:
 2. **CLI + local web UI** - `jf` commands and `jf serve` (FastAPI + Jinja2 + htmx), both backed by the same matching code. Local-only by default; see Hosting above for remote-access options.
 3. **Chrome extension badge overlay** - Vite + CRXJS + TypeScript MV3, bundled sponsor snapshot, in-browser `token_set_ratio` port. Verified end-to-end in real Chrome against a simulated LinkedIn navigation; real selectors still need checking against a live session, see `extension/README.md`.
 4. **Resume OCR + structured extraction** - `pdfplumber` text layer, per-page `pytesseract`/`pdf2image` OCR fallback (needs the `tesseract` system binary, not just a pip package), heuristic skills/experience/education extraction - no LLM call, no persona-biased keyword list.
-5. **Job ingestion + open-application tracking + resume-derived scoring** - direct ATS JSON APIs only (verified live against Stripe's real Greenhouse board; Greenhouse/Lever/Ashby/Recruitee/Workable - every link is the employer's own posting, no aggregator), enriched with sponsor status and an open-application flag at ingest time via `matching/score.py`, generalizing job-research's hardcoded fit_score into resume-derived weights.
+5. **Job ingestion + open-application tracking + resume-derived scoring** - direct ATS JSON APIs (verified live against Stripe's real Greenhouse board; Greenhouse/Lever/Ashby/Recruitee/Workable) plus JSearch (CLI-only, filtered to direct-domain results), enriched with sponsor status and an open-application flag at ingest time via `matching/score.py`, generalizing job-research's hardcoded fit_score into resume-derived weights.
+
+Past the original five: **storage migrated from SQLite to PostgreSQL**
+(Neon, 2026-10-03), and a **Meilisearch search index** (self-hosted on
+Modal) was added on top for ranked, typo-tolerant search - both deployed
+alongside the app (see `deploy/README.md`).
 
 Explicitly not built, by design: automatic discovery of which sponsor
 uses which ATS/slug (job-research's DuckDuckGo-based approach was
-deliberately not repeated - pass a known `--slug` instead), and no job
-aggregator (Adzuna was tried and dropped - see Risk posture above).
+deliberately not repeated - pass a known `--slug` instead), and direct
+LinkedIn/Indeed server-side scraping (considered and rejected as the
+same ToS-risk category as Adzuna, worse - see Risk posture above).
 
 Full reasoning and the hackathon-credential/job-research research behind
 these decisions: `~/.claude/plans/zippy-pondering-scroll.md`.

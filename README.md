@@ -13,14 +13,16 @@ and matches jobs by keyword, experience level, and country. NL-only for now.
 Python owns scraping, matching, resume parsing, and both the CLI and the
 local web UI - they're two views over the same backend code, not separate
 stacks. TypeScript owns the Chrome extension (Manifest V3), the only other
-language in the project. PostgreSQL (Neon, free serverless tier) for
-storage.
+language in the project. PostgreSQL (Neon, free serverless tier) is the
+system of record; Meilisearch (self-hosted on Modal) is a derived,
+rebuildable search index on top of it, never the source of truth.
 
 ```mermaid
 flowchart TB
     subgraph EXT_SRC["External sources, read-only"]
         IND["IND public register\nHTML table, updates monthly"]
         ATSSRC["Company ATS JSON endpoints\nGreenhouse / Lever / Ashby / Recruitee / Workable\n(the job's own direct link, no aggregator)"]
+        JSEARCH["JSearch (RapidAPI)\nGoogle for Jobs aggregation\nkept only if the apply link's domain\nmatches the employer - CLI-only, jf search-jobs"]
         PAGE["LinkedIn / Indeed page\nrendered in your own logged-in browser"]
     end
 
@@ -29,9 +31,10 @@ flowchart TB
         NORM["sponsors/normalize.py"]
         MATCH["sponsors/match.py\nrapidfuzz token_set_ratio"]
         EXPORT["sponsors/export.py"]
-        DB[("PostgreSQL (Neon)")]
+        DB[("PostgreSQL (Neon)\nsystem of record")]
+        SEARCH[("Meilisearch\nderived, rebuildable index")]
         RESUME["resume/extract.py, ocr.py, fields.py"]
-        JOBS["jobs/ats/*, jobs/ingest.py"]
+        JOBS["jobs/ats/*, jobs/jsearch.py, jobs/ingest.py"]
         SCORE["matching/score.py"]
         CLI["cli.py - Typer app: jf"]
         WEBAPP["web/app.py - FastAPI"]
@@ -49,8 +52,8 @@ flowchart TB
         OVERLAY["overlay.ts\nIND Recognised Sponsor badge"]
     end
 
-    subgraph WEB["Local web UI, jf serve\n127.0.0.1 by default"]
-        TEMPLATES["Jinja2 templates + htmx\nsponsor status, company search"]
+    subgraph WEB["Web UI, jf serve\n127.0.0.1 locally, also deployed on Modal"]
+        TEMPLATES["Jinja2 templates + htmx\nsearch, filters, company lookup"]
     end
 
     IND -->|"polite monthly GET"| SCRAPE
@@ -63,13 +66,17 @@ flowchart TB
     RESUME -. "optional, gated" .-> LLM
 
     ATSSRC --> JOBS
+    JSEARCH --> JOBS
     JOBS --> DB --> SCORE --> DB
+    DB -. "reindexed on ingest/rescore" .-> SEARCH
 
     CLI --> SCRAPE
     CLI --> RESUME
     CLI --> JOBS
     CLI --> SCORE
-    DB --> WEBAPP --> TEMPLATES
+    SEARCH -->|"ranked, typo-tolerant"| WEBAPP
+    DB -.->|"fallback if search is down"| WEBAPP
+    WEBAPP --> TEMPLATES
 
     PAGE --> CONTENT --> MATCHERTS
     BUNDLE --> MATCHERTS
@@ -81,8 +88,8 @@ flowchart TB
     classDef extension fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
     classDef enhancement fill:#fff8e1,stroke:#f9a825,stroke-width:1.5px,stroke-dasharray:3 3,color:#e65100
 
-    class IND,PAGE,ATSSRC source
-    class SCRAPE,NORM,MATCH,EXPORT,DB,CLI,WEBAPP,RESUME,JOBS,SCORE core
+    class IND,PAGE,ATSSRC,JSEARCH source
+    class SCRAPE,NORM,MATCH,EXPORT,DB,SEARCH,CLI,WEBAPP,RESUME,JOBS,SCORE core
     class DI,LLM enhancement
     class BUNDLE,CONTENT,MATCHERTS,OVERLAY extension
     class TEMPLATES webui
@@ -143,38 +150,24 @@ TypeScript port in the extension).
 | --- | --- | --- |
 | Backend / scraping / matching | Python (`httpx`, `beautifulsoup4`, `rapidfuzz`) | Mature ecosystem for all of it; one language for the whole backend |
 | Resume parsing | `pdfplumber` (text layer), `pytesseract` + `pdf2image` (OCR fallback) | Local-first; OCR needs the `tesseract` system binary, not just a pip package |
-| Job ingestion | Direct ATS JSON APIs (Greenhouse/Lever/Ashby/Recruitee/Workable) | No-auth company APIs only - every link is the employer's own posting, no aggregator redirect or required attribution; never bulk LinkedIn/Indeed scraping |
+| Job ingestion | Direct ATS JSON APIs (Greenhouse/Lever/Ashby/Recruitee/Workable), plus JSearch (RapidAPI, CLI-only) | ATS APIs need no auth and are always direct; JSearch aggregates Google for Jobs but is filtered to keep only results whose apply link's domain actually matches the employer - never bulk LinkedIn/Indeed scraping |
 | CLI | Typer | Fast to build, matches other personal tools in this setup |
 | Web UI | FastAPI + Jinja2 + htmx | Same language as the backend, no second frontend toolchain for a single-user tool; htmx gives live search without hand-written JS |
 | Browser extension | TypeScript, Vite + CRXJS, Manifest V3 | Only option for a Chrome extension; bundled sponsor snapshot + in-browser matching, no runtime network calls |
 | Storage | PostgreSQL (Neon, free serverless tier) | A real `DATABASE_URL` any deployment can reach, without hand-running a database server |
-| Hosting | Local-first (`127.0.0.1` by default) | Nothing here needs to be always-on or public, see Hosting below |
+| Search | Meilisearch, self-hosted on Modal | Typo-tolerant, ranked search over the jobs table - derived/rebuildable from Postgres, never the source of truth; falls back to a plain Postgres query if it's ever down |
+| Hosting | Local-first by default, also deployed on Modal | See Hosting below |
 
 ### Hosting
 
-Runs local-first by default: `jf serve` binds `127.0.0.1` only, so it's
-reachable from this machine and nowhere else unless you change `--host`.
-That's a deliberate default, not a placeholder - nothing here needs to be
-always-on or public, and keeping it local-only is the simplest way to avoid
-exposing a personal tool (eventually holding resume PII) to the network.
-
-If/when remote access is wanted:
-
-- **Private access from your other devices (phone, laptop elsewhere)**:
-  [Tailscale](https://tailscale.com) (or `cloudflared tunnel`) in front of
-  `jf serve`. Free for personal use, keeps the tool off the public internet
-  entirely, no code changes needed. The recommended next step if "host it"
-  just means "reach it from somewhere other than this machine."
-- **Actually public / shareable with others**: a small always-on host -
-  [Fly.io](https://fly.io)'s free tier is the lowest-friction, vendor-
-  neutral option for a single small FastAPI container. Azure Container
-  Apps (consumption plan, scale-to-zero) is the alternative if the Azure
-  portfolio angle matters more than cost - GitHub Student Pack / Azure for
-  Students benefits may have lapsed post-graduation, so check before
-  assuming that credit is available.
-
-Neither of these is provisioned - this is guidance for when the decision
-is actually needed, not an implemented default.
+`jf serve` binds `127.0.0.1` by default for purely local use - nothing
+about that has changed. Separately, the app is also deployed on
+[Modal](https://modal.com) (see `deploy/`), auto-deploying on every push
+to `main` via `.github/workflows/deploy-modal.yml`. The two aren't
+mutually exclusive: local-first stays the default for quick local
+testing, the Modal deployment is the actually-used, always-reachable
+instance - see `deploy/README.md` for the full setup (Postgres via Neon,
+search via self-hosted Meilisearch, secrets).
 
 ### Risk / legal posture
 
@@ -182,7 +175,7 @@ is actually needed, not an implemented default.
 | --- | --- | --- |
 | IND register scraping | Low - government register published for exactly this lookup purpose; robots.txt allows it; no reuse restriction found | One GET per monthly sync, descriptive User-Agent, abort loudly if row count craters or parsing yields zero rows |
 | LinkedIn/Indeed server-side bulk scraping | High - ToS risk, bot-detection fragility, risk to the account doing it | Avoided entirely - job ingestion uses direct ATS JSON endpoints instead, verified live against a real company's public Greenhouse board |
-| Job aggregator APIs (e.g. Adzuna) | Attribution/branding terms (e.g. a required "Jobs by Adzuna" badge) conflict with a clean, direct-to-employer open-source product | Not used - ingestion is direct-from-ATS only, so every listing is the employer's own link with no third-party attribution obligation |
+| Job aggregator APIs | Adzuna's terms require a visible "Jobs by Adzuna" badge, which conflicts with a clean, direct-to-employer open-source product - tried, then dropped | JSearch (RapidAPI) checked instead: no attribution-badge requirement, commercial use explicitly licensed - but its own "is this link direct" flag turned out not to mean "employer's own domain" (verified live), so results are filtered by apply-link-domain-vs-employer-name match instead, CLI-only given its 200 req/month free tier |
 | Chrome extension badge overlay | Materially lower - reads only the page already rendered in an authenticated session, same category as an ad blocker | Stays client-side only, no server-side fetch of LinkedIn/Indeed pages. The LinkedIn/Indeed CSS selectors are therefore best-effort, never checked against a live session - see `extension/README.md` |
 | Resume content (PII) | N/A for local-only parsing | Any third-party parsing tier is opt-in only, never default |
 | Web UI reachability | N/A while local-only | Defaults to `127.0.0.1`; opening it up is an explicit `--host` choice |
@@ -195,13 +188,19 @@ All five phases from the original plan are built:
 2. **CLI + local web UI** - `jf` commands and `jf serve` (FastAPI + Jinja2 + htmx), both backed by the same matching code.
 3. **Chrome extension badge overlay** - Vite + CRXJS + TypeScript MV3, bundled sponsor snapshot, in-browser `token_set_ratio` port. Verified end-to-end in real Chrome against a simulated LinkedIn navigation.
 4. **Resume OCR + structured extraction** - `pdfplumber` text layer with a per-page `pytesseract`/`pdf2image` OCR fallback, heuristic skills/experience/education extraction, no LLM call. OCR needs the `tesseract` system binary installed separately.
-5. **Job ingestion + open-application tracking + resume-derived scoring** - direct ATS JSON APIs only (Greenhouse/Lever/Ashby/Recruitee/Workable - every link is the employer's own posting, no aggregator), enriched with sponsor status and an open-application flag at ingest time, scored against the loaded resume's skills.
+5. **Job ingestion + open-application tracking + resume-derived scoring** - direct ATS JSON APIs (Greenhouse/Lever/Ashby/Recruitee/Workable) plus JSearch (CLI-only, filtered to direct-domain results), enriched with sponsor status and an open-application flag at ingest time, scored against the loaded resume's skills.
+
+Past the original five, two more have landed: **storage migrated from
+SQLite to PostgreSQL** (Neon), and a **Meilisearch search index** was
+added on top of it for ranked, typo-tolerant search - both deployed
+alongside the app on Modal (see `deploy/README.md`).
 
 What's explicitly NOT built, by design: automatic discovery of which
 sponsor uses which ATS/slug (job-research's DuckDuckGo-based approach was
-deliberately not repeated here - pass a known `--slug` instead), and any
-LinkedIn/Indeed-selector verification beyond best-effort (see
-`extension/README.md`).
+deliberately not repeated here - pass a known `--slug` instead), direct
+LinkedIn/Indeed server-side scraping (considered and rejected as the same
+ToS-risk category as Adzuna, worse), and any LinkedIn/Indeed-selector
+verification beyond best-effort (see `extension/README.md`).
 
 Deeper reasoning and the hackathon-credential/job-research research behind
 these decisions: `~/.claude/plans/zippy-pondering-scroll.md` (local
@@ -216,6 +215,7 @@ uv run jf match --company "Booking.com"
 uv run jf serve                                 # web UI at http://127.0.0.1:8000
 uv run jf parse-resume path/to/resume.pdf        # OCR fallback needs tesseract installed
 uv run jf fetch-jobs --source greenhouse --slug stripe
+uv run jf search-jobs --query "platform engineer"   # needs a RapidAPI key, see .env
 uv run jf rescore-jobs
 uv run jf list-jobs --sponsors-only
 ```
@@ -233,9 +233,11 @@ uv run mypy src
 
 ## Status
 
-All five roadmap phases are working: sponsor registry sync, fuzzy company
-matching, the CLI, the local web UI, the Chrome extension, resume
+All five original roadmap phases are working: sponsor registry sync,
+fuzzy company matching, the CLI, the web UI, the Chrome extension, resume
 parsing (OCR fallback needs `tesseract` installed separately), and job
-ingestion with resume-derived scoring (direct ATS APIs only - every link
-is the employer's own posting; needs a known company slug, there's no
-automatic discovery and no job aggregator).
+ingestion with resume-derived scoring (direct ATS APIs need a known
+company slug; JSearch adds free-text search, CLI-only, filtered to
+direct-domain results). Storage is PostgreSQL (Neon), with a Meilisearch
+search index on top for ranked, typo-tolerant results - both deployed
+alongside the app on Modal.

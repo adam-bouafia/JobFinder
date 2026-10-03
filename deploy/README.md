@@ -49,12 +49,36 @@ docs/architecture.md). One-time setup:
 3. Locally, put the same value in `.env` as `DATABASE_URL` (a separate
    local podman Postgres also works for local dev - see `.env`'s comment).
 
+### Search (Meilisearch)
+
+Self-hosted on Modal too, no external account needed - one-time setup:
+
+```bash
+uv run python -c "import secrets; print(secrets.token_urlsafe(32))"  # or any 16+ byte string
+modal secret create jobfinder-search MEILI_MASTER_KEY=<the-generated-key>
+```
+
+Deploy as usual; `meilisearch_server` comes up at
+`https://<workspace>--jobfinder-search.modal.run`. Deliberately **not**
+backed by a Modal Volume - hit a real Meilisearch bug live ("failed to
+infer the version of the database," its VERSION file not surviving a
+write on that filesystem - same class of issue SQLite-on-a-Volume had).
+The index runs on the container's own local disk instead: it's lost on
+every restart/redeploy, which is fine since Postgres is the system of
+record and `rescore_jobs()` already reindexes everything as a side
+effect - the next resume upload (or `jf rescore-jobs` / `seed_jobs`
+below) naturally rebuilds it. If search is ever down, the CLI/`/export`
+still work fully against Postgres, and the web UI falls back to a plain
+Postgres query automatically.
+
 ### What it does
 
 - Wraps the existing FastAPI app (`jobfinder.web.app`) unchanged - same
   code that runs via `jf serve` locally.
 - `DATABASE_URL` comes from the `jobfinder-db` Modal Secret, attached to
-  `web()`, `sync_sponsors()`, and `seed_jobs()`.
+  `web()`, `sync_sponsors()`, and `seed_jobs()`. `MEILI_MASTER_KEY` from
+  `jobfinder-search` is reused as `MEILISEARCH_KEY` for the same three
+  functions (one secret, two env var names - see `_point_at_search()`).
 - Mounts a Modal Volume at `/data` too, but only for resume PDF uploads
   and the sponsor snapshot JSON the Chrome extension bundles - plain
   files, not a shared mutable database anymore.
@@ -99,3 +123,13 @@ add more roles to the live site:
 ```bash
 uv run modal run deploy/modal_app.py::seed_jobs --source lever --slug some-company
 ```
+
+### JSearch (CLI-only, not deployed)
+
+`jf search-jobs --query "..."` (see `jobs/jsearch.py`) runs locally
+only, against the local `DATABASE_URL`/`.env` - deliberately not wired
+into Modal at all. Its free tier is 200 requests/month, far too scarce
+to call from the live web app's search; results write to whatever
+Postgres `DATABASE_URL` points at, so pointing `.env` at the Neon URL
+before running it adds results to the live site the same way `seed_jobs`
+does.

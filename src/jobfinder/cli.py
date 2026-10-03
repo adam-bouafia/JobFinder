@@ -12,6 +12,8 @@ from .jobs.ats import ATS_FETCHERS
 from .jobs.ats import fetch as ats_fetch
 from .jobs.export import export_jobs
 from .jobs.ingest import ingest_jobs, list_jobs
+from .jobs.jsearch import JSearchCredentialsError
+from .jobs.jsearch import search as jsearch_search
 from .matching.score import rescore_jobs
 from .paths import PROJECT_ROOT
 from .resume.parse import parse_resume
@@ -94,6 +96,27 @@ def cmd_fetch_jobs(
     console.print(
         f"[green]Fetched {len(listings)} roles from {source}:{slug}, {inserted} new.[/green]"
     )
+
+
+@app.command("search-jobs")
+def cmd_search_jobs(
+    query: str = typer.Option(..., "--query", help="Free-text search, e.g. 'platform engineer'."),
+    country: str = typer.Option("nl", help="JSearch country code."),
+) -> None:
+    """Search JSearch (aggregates Google for Jobs) and store direct-link
+    results only - see jobs/jsearch.py for how "direct" is verified.
+
+    Needs a RapidAPI key subscribed to JSearch specifically: sign up free
+    at rapidapi.com and set RAPIDAPI_KEY. Free tier is 200 requests/month,
+    so this is CLI-only, not called automatically by the web UI.
+    """
+    try:
+        listings = jsearch_search(query, country=country)
+    except JSearchCredentialsError as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(code=1) from error
+    inserted = ingest_jobs(listings)
+    console.print(f"[green]Found {len(listings)} direct-link roles, {inserted} new.[/green]")
 
 
 @app.command("rescore-jobs")
