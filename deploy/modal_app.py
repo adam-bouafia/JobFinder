@@ -80,7 +80,7 @@ DATA_MOUNT = "/data"
     timeout=60,
 )
 @modal.concurrent(max_inputs=20)
-@modal.asgi_app()
+@modal.asgi_app(label="jobfinder")  # https://<workspace>--jobfinder.modal.run, not -web
 def web():  # type: ignore[no-untyped-def]  # Modal's own decorator, not typed for strict mypy
     import os
 

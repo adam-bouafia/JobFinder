@@ -18,9 +18,25 @@ Deploy:
 uv run modal deploy deploy/modal_app.py
 ```
 
-This prints the live URL. `uv run modal serve deploy/modal_app.py` gives a
-temporary preview URL with live reload instead, for trying changes before
-a real deploy.
+This prints the live URL: `https://adam-bouafia--jobfinder.modal.run`
+(the `web()` function uses an explicit `label="jobfinder"`, otherwise
+Modal would default to the longer `<app>-<function>` form).
+`uv run modal serve deploy/modal_app.py` gives a temporary preview URL
+with live reload instead, for trying changes before a real deploy.
+
+### Auto-deploy on push
+
+`.github/workflows/deploy-modal.yml` runs `modal deploy` on every push to
+`main`, authenticated via the `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET`
+repo secrets (same token this CLI already uses locally - `~/.modal.toml`
+after `modal setup`). No manual redeploy needed after merging a change.
+
+### Custom domain
+
+Checked directly against Modal's docs: custom domains need the Team plan
+($250/month) - not in scope for a personal tool funded by a one-time
+hackathon credit plus the free Starter tier. The `label="jobfinder"`
+subdomain customization above is the free alternative and already applied.
 
 ### What it does
 
