@@ -11,7 +11,6 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
 from jobfinder import db
-from jobfinder.jobs import adzuna
 from jobfinder.jobs.ingest import ingest_jobs
 from jobfinder.jobs.models import JobListing
 from jobfinder.sponsors.normalize import normalize
@@ -264,28 +263,12 @@ def test_resume_upload_parses_pdf_and_rescores_jobs(
     assert "python" in index.text.lower()
 
 
-def test_search_without_adzuna_credentials_still_shows_local_results(
-    client_with_jobs: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.delenv("ADZUNA_APP_ID", raising=False)
-    monkeypatch.delenv("ADZUNA_APP_KEY", raising=False)
-
+def test_index_filters_by_query(client_with_jobs: TestClient) -> None:
     response = client_with_jobs.get("/", params={"query": "backend"})
 
     assert response.status_code == 200
     assert "Senior Backend Engineer" in response.text
-
-
-def test_search_merges_in_fresh_adzuna_listings(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fake_listing = JobListing("Acme", "Platform Engineer", "Amsterdam", "https://x/9", "adzuna")
-    monkeypatch.setattr(adzuna, "search", lambda query, **kwargs: [fake_listing])
-
-    response = client.get("/", params={"query": "platform"})
-
-    assert response.status_code == 200
-    assert "Platform Engineer" in response.text
+    assert "General Application" not in response.text
 
 
 def test_results_partial_filters_by_city(client_with_jobs: TestClient) -> None:

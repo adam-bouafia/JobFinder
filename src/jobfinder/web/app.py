@@ -21,9 +21,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import db
-from ..jobs import adzuna
 from ..jobs.export import to_markdown, to_pdf_bytes, to_text
-from ..jobs.ingest import StoredJob, count_jobs, ingest_jobs, list_jobs
+from ..jobs.ingest import StoredJob, count_jobs, list_jobs
 from ..matching.score import rescore_jobs
 from ..paths import DB_PATH, RESUME_DIR
 from ..resume.parse import latest_resume_profile, parse_resume
@@ -90,22 +89,6 @@ def create_app() -> FastAPI:
             experience_level=experience or None,
         )
 
-    def _pull_fresh_listings(db_path: Path, query: str, city: str) -> None:
-        """Best-effort: merge in live Adzuna results for `query` before
-        showing search results, so there's one search action instead of a
-        separate "search local" and "fetch new" step. Silently skipped if
-        Adzuna isn't configured or the request fails - a slow/missing
-        upstream should never break the local search that always works.
-        """
-        if not query:
-            return
-        try:
-            listings = adzuna.search(query, where=city or None)
-        except Exception:
-            return
-        ingest_jobs(listings, db_path=db_path)
-        rescore_jobs(db_path=db_path)
-
     @app.get("/", response_class=HTMLResponse)
     def index(
         request: Request,
@@ -118,7 +101,6 @@ def create_app() -> FastAPI:
         uploaded: bool = Query(default=False),
         error: str = Query(default=""),
     ) -> HTMLResponse:
-        _pull_fresh_listings(db_path, query, city)
         stats = db.sponsor_stats(db_path)
         jobs = _search_jobs(db_path, query, city, sponsors_only, open_applications_only, experience)
         total = _count_jobs(db_path, query, city, sponsors_only, open_applications_only, experience)
@@ -152,9 +134,8 @@ def create_app() -> FastAPI:
         open_applications_only: bool = Query(default=False),
         experience: str = Query(default=""),
     ) -> HTMLResponse:
-        """htmx partial: just the results fragment, for live local filtering
-        as you type - no live Adzuna pull here, so it stays instant; that
-        only happens on an actual search submission (see index())."""
+        """htmx partial: just the results fragment, for live filtering as
+        you type against whatever's already stored locally."""
         jobs = _search_jobs(db_path, query, city, sponsors_only, open_applications_only, experience)
         total = _count_jobs(db_path, query, city, sponsors_only, open_applications_only, experience)
         return templates.TemplateResponse(

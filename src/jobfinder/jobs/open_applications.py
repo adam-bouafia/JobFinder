@@ -1,8 +1,8 @@
 """Classify already-ingested job listings as open/speculative applications.
 
 Deliberately not a separate crawler: open-application roles already show
-up through the normal ATS/Adzuna ingestion (many Greenhouse boards carry
-an evergreen "General Application" req, for example), this just flags the
+up through the normal ATS ingestion (many Greenhouse boards carry an
+evergreen "General Application" req, for example), this just flags the
 ones that are.
 """
 

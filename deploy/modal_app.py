@@ -21,14 +21,15 @@ scale-to-zero on idle naturally does this for a low-traffic personal
 tool; not worth the complexity of reload-per-request for once-a-month
 freshness).
 
-Job search (Adzuna) runs here too, via `seed_jobs` and via the web UI's
-own "Fetch new roles" form - both read the `jobfinder-adzuna` Modal
-Secret (ADZUNA_APP_ID/ADZUNA_APP_KEY) and write into this same volume.
-Run `seed_jobs` once manually after a fresh volume (see deploy/README.md);
-it isn't scheduled on its own, since `sync_sponsors` already covers the
-once-a-month cadence this tool actually needs and repeated Adzuna calls
-would just re-fetch mostly the same postings - the web form covers
-on-demand top-ups instead.
+Job data comes only from direct ATS endpoints (Greenhouse/Lever/Ashby/
+Recruitee/Workable) via `seed_jobs` - every link shown is the employer's
+own posting, never an aggregator redirect. Adzuna was tried and dropped
+(see docs/architecture.md's risk table): its API terms require a visible
+"Jobs by Adzuna" attribution badge, which conflicts with a clean,
+direct-to-employer open-source product. Run `seed_jobs` once manually
+after a fresh volume (see deploy/README.md) to pull a company's board;
+it isn't scheduled, since which companies to track is a deliberate,
+manual choice, not something to auto-refresh.
 """
 
 from __future__ import annotations
@@ -83,7 +84,6 @@ DATA_MOUNT = "/data"
 @app.function(
     image=image,
     volumes={DATA_MOUNT: volume},
-    secrets=[modal.Secret.from_name("jobfinder-adzuna")],
     max_containers=1,
     timeout=60,
 )
@@ -121,22 +121,21 @@ def sync_sponsors() -> None:
 @app.function(
     image=image,
     volumes={DATA_MOUNT: volume},
-    secrets=[modal.Secret.from_name("jobfinder-adzuna")],
     timeout=300,
 )
-def seed_jobs(query: str = "software engineer", country: str = "nl") -> None:
-    """Mirrors `jf search-jobs` + `jf rescore-jobs`, for the deployed
+def seed_jobs(source: str = "greenhouse", slug: str = "stripe") -> None:
+    """Mirrors `jf fetch-jobs` + `jf rescore-jobs`, for the deployed
     instance's own volume. Not scheduled - run manually (see
-    deploy/README.md) to seed or top up the live site's job listings.
+    deploy/README.md) to add or top up a company's roles on the live site.
     """
     import os
 
     os.environ["JOBFINDER_DATA_DIR"] = DATA_MOUNT
-    from jobfinder.jobs.adzuna import search as adzuna_search
+    from jobfinder.jobs.ats import fetch as ats_fetch
     from jobfinder.jobs.ingest import ingest_jobs
     from jobfinder.matching.score import rescore_jobs
 
-    listings = adzuna_search(query, country=country)
+    listings = ats_fetch(source, slug)
     inserted = ingest_jobs(listings)
     rescored = rescore_jobs()
     volume.commit()

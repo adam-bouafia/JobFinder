@@ -1,1 +1,2 @@
-"""Job ingestion: direct ATS endpoints and Adzuna, never bulk LinkedIn/Indeed scraping."""
+"""Job ingestion: direct ATS endpoints only, never a job aggregator or
+bulk LinkedIn/Indeed scraping."""

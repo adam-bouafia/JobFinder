@@ -53,10 +53,14 @@ subdomain customization above is the free alternative and already applied.
   independent of the local systemd timer / GitHub Actions cron - the
   deployed instance has its own volume, so it needs its own refresh.
 
-- Adzuna credentials live in a Modal Secret (`jobfinder-adzuna`, created
-  via `modal secret create jobfinder-adzuna --from-dotenv .env`), used by
-  the `seed_jobs` function below - the web UI itself still doesn't call
-  Adzuna directly, it only ever reads what's already in the volume.
+- `seed_jobs` pulls a company's roles directly from its ATS board
+  (Greenhouse/Lever/Ashby/Recruitee/Workable) - every link is the
+  employer's own posting. No aggregator (Adzuna was tried and dropped:
+  its terms require a visible "Jobs by Adzuna" attribution badge, which
+  conflicts with a direct-to-employer open-source product - see
+  docs/architecture.md). If an old `jobfinder-adzuna` Modal Secret still
+  exists from before, it's unused now and safe to delete
+  (`modal secret delete jobfinder-adzuna`).
 
 ### What it doesn't do
 
@@ -76,9 +80,9 @@ uv run modal run deploy/modal_app.py::seed_jobs
 (or just wait for the next scheduled sponsor sync - but the web UI will
 show "no sponsor data yet" / "0 jobs found" until then.)
 
-`seed_jobs` isn't scheduled - run it again manually with a different
-`--query` to top up the live site with more roles:
+`seed_jobs` isn't scheduled - run it again with a different company to
+add more roles to the live site:
 
 ```bash
-uv run modal run deploy/modal_app.py::seed_jobs --query "platform engineer"
+uv run modal run deploy/modal_app.py::seed_jobs --source lever --slug some-company
 ```

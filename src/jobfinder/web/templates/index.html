@@ -25,10 +25,8 @@
   </form>
 
   {# One form: typing/toggling filters live-refreshes #results via htmx
-     against what's already stored (instant, no network call to Adzuna);
-     pressing Enter or clicking Search is a plain, un-enhanced GET to /,
-     which also pulls in fresh Adzuna results for `query` before showing
-     results - one search action, not a separate "search" and "fetch". #}
+     against what's already stored; pressing Enter or clicking Search
+     falls through to the same thing as a real, shareable GET to /. #}
   <form
     action="/"
     method="get"

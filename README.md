@@ -20,8 +20,7 @@ volume, zero ops.
 flowchart TB
     subgraph EXT_SRC["External sources, read-only"]
         IND["IND public register\nHTML table, updates monthly"]
-        ADZUNA["Adzuna job search API\n(needs free API credentials)"]
-        ATSSRC["Company ATS JSON endpoints\nGreenhouse / Lever / Ashby / Recruitee / Workable"]
+        ATSSRC["Company ATS JSON endpoints\nGreenhouse / Lever / Ashby / Recruitee / Workable\n(the job's own direct link, no aggregator)"]
         PAGE["LinkedIn / Indeed page\nrendered in your own logged-in browser"]
     end
 
@@ -32,7 +31,7 @@ flowchart TB
         EXPORT["sponsors/export.py"]
         DB[("SQLite data/jobfinder.db")]
         RESUME["resume/extract.py, ocr.py, fields.py"]
-        JOBS["jobs/adzuna.py, jobs/ats/*, jobs/ingest.py"]
+        JOBS["jobs/ats/*, jobs/ingest.py"]
         SCORE["matching/score.py"]
         CLI["cli.py - Typer app: jf"]
         WEBAPP["web/app.py - FastAPI"]
@@ -63,7 +62,6 @@ flowchart TB
     RESUME -. optional .-> DI
     RESUME -. "optional, gated" .-> LLM
 
-    ADZUNA --> JOBS
     ATSSRC --> JOBS
     JOBS --> DB --> SCORE --> DB
 
@@ -83,7 +81,7 @@ flowchart TB
     classDef extension fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
     classDef enhancement fill:#fff8e1,stroke:#f9a825,stroke-width:1.5px,stroke-dasharray:3 3,color:#e65100
 
-    class IND,PAGE,ADZUNA,ATSSRC source
+    class IND,PAGE,ATSSRC source
     class SCRAPE,NORM,MATCH,EXPORT,DB,CLI,WEBAPP,RESUME,JOBS,SCORE core
     class DI,LLM enhancement
     class BUNDLE,CONTENT,MATCHERTS,OVERLAY extension
@@ -145,7 +143,7 @@ TypeScript port in the extension).
 | --- | --- | --- |
 | Backend / scraping / matching | Python (`httpx`, `beautifulsoup4`, `rapidfuzz`) | Mature ecosystem for all of it; one language for the whole backend |
 | Resume parsing | `pdfplumber` (text layer), `pytesseract` + `pdf2image` (OCR fallback) | Local-first; OCR needs the `tesseract` system binary, not just a pip package |
-| Job ingestion | Direct ATS JSON APIs (Greenhouse/Lever/Ashby/Recruitee/Workable) + Adzuna | No-auth company APIs plus one API needing free Adzuna credentials; never bulk LinkedIn/Indeed scraping |
+| Job ingestion | Direct ATS JSON APIs (Greenhouse/Lever/Ashby/Recruitee/Workable) | No-auth company APIs only - every link is the employer's own posting, no aggregator redirect or required attribution; never bulk LinkedIn/Indeed scraping |
 | CLI | Typer | Fast to build, matches other personal tools in this setup |
 | Web UI | FastAPI + Jinja2 + htmx | Same language as the backend, no second frontend toolchain for a single-user tool; htmx gives live search without hand-written JS |
 | Browser extension | TypeScript, Vite + CRXJS, Manifest V3 | Only option for a Chrome extension; bundled sponsor snapshot + in-browser matching, no runtime network calls |
@@ -183,7 +181,8 @@ is actually needed, not an implemented default.
 | Posture | Risk | Guardrail |
 | --- | --- | --- |
 | IND register scraping | Low - government register published for exactly this lookup purpose; robots.txt allows it; no reuse restriction found | One GET per monthly sync, descriptive User-Agent, abort loudly if row count craters or parsing yields zero rows |
-| LinkedIn/Indeed server-side bulk scraping | High - ToS risk, bot-detection fragility, risk to the account doing it | Avoided entirely - job ingestion uses Adzuna's API and direct ATS JSON endpoints instead, verified live against a real company's public Greenhouse board |
+| LinkedIn/Indeed server-side bulk scraping | High - ToS risk, bot-detection fragility, risk to the account doing it | Avoided entirely - job ingestion uses direct ATS JSON endpoints instead, verified live against a real company's public Greenhouse board |
+| Job aggregator APIs (e.g. Adzuna) | Attribution/branding terms (e.g. a required "Jobs by Adzuna" badge) conflict with a clean, direct-to-employer open-source product | Not used - ingestion is direct-from-ATS only, so every listing is the employer's own link with no third-party attribution obligation |
 | Chrome extension badge overlay | Materially lower - reads only the page already rendered in an authenticated session, same category as an ad blocker | Stays client-side only, no server-side fetch of LinkedIn/Indeed pages. The LinkedIn/Indeed CSS selectors are therefore best-effort, never checked against a live session - see `extension/README.md` |
 | Resume content (PII) | N/A for local-only parsing | Any third-party parsing tier is opt-in only, never default |
 | Web UI reachability | N/A while local-only | Defaults to `127.0.0.1`; opening it up is an explicit `--host` choice |
@@ -196,7 +195,7 @@ All five phases from the original plan are built:
 2. **CLI + local web UI** - `jf` commands and `jf serve` (FastAPI + Jinja2 + htmx), both backed by the same matching code.
 3. **Chrome extension badge overlay** - Vite + CRXJS + TypeScript MV3, bundled sponsor snapshot, in-browser `token_set_ratio` port. Verified end-to-end in real Chrome against a simulated LinkedIn navigation.
 4. **Resume OCR + structured extraction** - `pdfplumber` text layer with a per-page `pytesseract`/`pdf2image` OCR fallback, heuristic skills/experience/education extraction, no LLM call. OCR needs the `tesseract` system binary installed separately.
-5. **Job ingestion + open-application tracking + resume-derived scoring** - direct ATS JSON APIs and Adzuna (needs free credentials), enriched with sponsor status and an open-application flag at ingest time, scored against the loaded resume's skills.
+5. **Job ingestion + open-application tracking + resume-derived scoring** - direct ATS JSON APIs only (Greenhouse/Lever/Ashby/Recruitee/Workable - every link is the employer's own posting, no aggregator), enriched with sponsor status and an open-application flag at ingest time, scored against the loaded resume's skills.
 
 What's explicitly NOT built, by design: automatic discovery of which
 sponsor uses which ATS/slug (job-research's DuckDuckGo-based approach was
@@ -217,7 +216,6 @@ uv run jf match --company "Booking.com"
 uv run jf serve                                 # web UI at http://127.0.0.1:8000
 uv run jf parse-resume path/to/resume.pdf        # OCR fallback needs tesseract installed
 uv run jf fetch-jobs --source greenhouse --slug stripe
-uv run jf search-jobs --query "software engineer"  # needs ADZUNA_APP_ID / ADZUNA_APP_KEY
 uv run jf rescore-jobs
 uv run jf list-jobs --sponsors-only
 ```
@@ -238,5 +236,6 @@ uv run mypy src
 All five roadmap phases are working: sponsor registry sync, fuzzy company
 matching, the CLI, the local web UI, the Chrome extension, resume
 parsing (OCR fallback needs `tesseract` installed separately), and job
-ingestion with resume-derived scoring (Adzuna needs free credentials; ATS
-fetchers need a known company slug, there's no automatic discovery).
+ingestion with resume-derived scoring (direct ATS APIs only - every link
+is the employer's own posting; needs a known company slug, there's no
+automatic discovery and no job aggregator).

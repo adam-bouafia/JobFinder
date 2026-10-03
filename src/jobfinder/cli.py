@@ -8,7 +8,6 @@ import typer
 from dotenv import load_dotenv
 from rich.console import Console
 
-from .jobs import adzuna as jobs_adzuna
 from .jobs.ats import ATS_FETCHERS
 from .jobs.ats import fetch as ats_fetch
 from .jobs.export import export_jobs
@@ -21,8 +20,7 @@ from .sponsors import scrape as sponsors_scrape
 from .sponsors.match import match_company
 
 # Explicit path, not dotenv's default cwd-upward search: `jf` should pick
-# up repo-root secrets (e.g. ADZUNA_APP_ID/KEY) regardless of where it's
-# run from.
+# up repo-root secrets regardless of where it's run from.
 load_dotenv(PROJECT_ROOT / ".env")
 
 app = typer.Typer(
@@ -96,26 +94,6 @@ def cmd_fetch_jobs(
     console.print(
         f"[green]Fetched {len(listings)} roles from {source}:{slug}, {inserted} new.[/green]"
     )
-
-
-@app.command("search-jobs")
-def cmd_search_jobs(
-    query: str = typer.Option(..., "--query", help="Search text, e.g. 'software engineer'."),
-    city: str | None = typer.Option(None, help="Narrow to a location, e.g. 'Amsterdam'."),
-    country: str = typer.Option("nl", help="Adzuna country code."),
-) -> None:
-    """Search Adzuna and store the results.
-
-    Needs free credentials: sign up at https://developer.adzuna.com/ and
-    set ADZUNA_APP_ID / ADZUNA_APP_KEY.
-    """
-    try:
-        listings = jobs_adzuna.search(query, country=country, where=city)
-    except jobs_adzuna.AdzunaCredentialsError as error:
-        console.print(f"[red]{error}[/red]")
-        raise typer.Exit(code=1) from error
-    inserted = ingest_jobs(listings)
-    console.print(f"[green]Found {len(listings)} roles, {inserted} new.[/green]")
 
 
 @app.command("rescore-jobs")
