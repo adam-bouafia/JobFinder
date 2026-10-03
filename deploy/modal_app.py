@@ -27,25 +27,20 @@ Search-jobs (Adzuna) isn't wired up here - the web UI doesn't expose it
 
 from __future__ import annotations
 
+import tomllib
+from pathlib import Path
+
 import modal
 
 app = modal.App("jobfinder")
 
-RUNTIME_DEPENDENCIES = [
-    "typer>=0.12",
-    "httpx>=0.27",
-    "beautifulsoup4>=4.12",
-    "lxml>=5.0",
-    "rich>=13.0",
-    "rapidfuzz>=3.9",
-    "fastapi>=0.142.2",
-    "uvicorn[standard]>=0.54.0",
-    "jinja2>=3.1.6",
-    "pdfplumber>=0.11.10",
-    "pytesseract>=0.3.13",
-    "pdf2image>=1.17.0",
-    "python-dotenv>=1.2.4",
-]
+# Read runtime deps from pyproject.toml itself rather than a second,
+# hand-maintained list here - a hardcoded copy drifted the moment
+# reportlab was added as a real dependency (PDF export needed it, but
+# only pyproject.toml got updated), crash-looping the deployed container
+# with ModuleNotFoundError on every request.
+_PYPROJECT = tomllib.loads((Path(__file__).resolve().parent.parent / "pyproject.toml").read_text())
+RUNTIME_DEPENDENCIES = _PYPROJECT["project"]["dependencies"]
 
 image = (
     modal.Image.debian_slim(python_version="3.12")
