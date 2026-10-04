@@ -126,6 +126,7 @@ meili_image = (
 )
 DB_SECRET = modal.Secret.from_name("jobfinder-db")
 SEARCH_SECRET = modal.Secret.from_name("jobfinder-search")
+RAPIDAPI_SECRET = modal.Secret.from_name("jobfinder-rapidapi")
 
 # Modal assigns this URL from the label below - hardcoded here too so the
 # other functions can point MEILISEARCH_URL at it without needing a
@@ -232,3 +233,28 @@ def seed_jobs(source: str = "greenhouse", slug: str = "stripe") -> None:
     inserted = ingest_jobs(listings)
     rescored = rescore_jobs()
     print(f"Found {len(listings)} roles, {inserted} new, {rescored} rescored")
+
+
+@app.function(
+    image=image,
+    secrets=[DB_SECRET, SEARCH_SECRET, RAPIDAPI_SECRET],
+    timeout=300,
+)
+def search_jobs(query: str, country: str = "nl") -> None:
+    """Mirrors `jf search-jobs` + `jf rescore-jobs`, for the deployed
+    instance's Postgres (and search index) - the broad-coverage
+    counterpart to seed_jobs (which only pulls one company's own board at
+    a time). Not scheduled, same reasoning as seed_jobs: which queries to
+    run is a deliberate, manual choice (and JSearch's free tier is
+    200 requests/month, one request per call here)."""
+    import os
+
+    _point_at_search(os.environ)
+    from jobfinder.jobs.ingest import ingest_jobs
+    from jobfinder.jobs.jsearch import search as jsearch_search
+    from jobfinder.matching.score import rescore_jobs
+
+    listings = jsearch_search(query, country=country)
+    inserted = ingest_jobs(listings)
+    rescored = rescore_jobs()
+    print(f"Found {len(listings)} direct-link roles, {inserted} new, {rescored} rescored")
