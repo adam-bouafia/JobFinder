@@ -14,105 +14,82 @@
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Adam%20Bouafia-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/adam-bouafia)
 [![Portfolio](https://img.shields.io/badge/Portfolio-adam--bouafia.github.io-111111?logo=googlechrome&logoColor=white)](https://adam-bouafia.github.io)
 
-Personal job-search tool for the Dutch market. Working name - will be
-renamed later.
+A job search tool for the Dutch market. Cross-references companies and
+job postings against the IND public register of recognised sponsors, so
+it's immediately clear which employers can sponsor a work-permit or
+highly-skilled-migrant visa. Also parses resumes and scores jobs by fit,
+keyword, experience level, and location.
 
-Cross-references companies and job postings against the IND public
-register of recognised sponsors, so it's immediately clear which employers
-can sponsor a work-permit / highly-skilled-migrant visa. Also parses resumes
-and matches jobs by keyword, experience level, and country. NL-only for now.
+NL-only for now. One Python backend, three interfaces: a CLI, a local web
+UI, and a Chrome extension.
 
 ## Architecture
 
 Python owns scraping, matching, resume parsing, and both the CLI and the
-local web UI - they're two views over the same backend code, not separate
-stacks. TypeScript owns the Chrome extension (Manifest V3), the only other
-language in the project. PostgreSQL (Neon, free serverless tier) is the
-system of record; Meilisearch (self-hosted on Modal) is a derived,
-rebuildable search index on top of it, never the source of truth.
+web UI - two interfaces over one backend, not separate stacks. TypeScript
+is used only for the Chrome extension. PostgreSQL (Neon) is the system of
+record; Meilisearch is a derived, rebuildable search index on top of it,
+never the source of truth.
+
+Four sources feed one ingest pipeline into Postgres. Every interface
+reads from Postgres, directly or through something derived from it
+(Meilisearch for ranked search, a JSON snapshot for the extension):
 
 ```mermaid
-flowchart TB
-    subgraph EXT_SRC["External sources, read-only"]
-        IND["IND public register\nHTML table, updates monthly"]
-        ATSSRC["Company ATS JSON endpoints\nGreenhouse / Lever / Ashby / Recruitee / Workable\n(the job's own direct link, no aggregator)"]
-        JSEARCH["JSearch (RapidAPI)\nGoogle for Jobs aggregation\nkept only if the apply link's domain\nmatches the employer - CLI-only, jf search-jobs"]
-        PAGE["LinkedIn / Indeed page\nrendered in your own logged-in browser"]
+flowchart LR
+    subgraph SRC["Sources"]
+        direction TB
+        IND["IND sponsor register\nmonthly"]
+        ATS["Company ATS boards\nGreenhouse / Lever / Ashby\nRecruitee / Workable"]
+        JSEARCH["JSearch\nGoogle for Jobs, CLI-only"]
+        RESUME["Uploaded resume"]
     end
 
-    subgraph CORE["jobfinder Python package"]
-        SCRAPE["sponsors/scrape.py"]
-        NORM["sponsors/normalize.py"]
-        MATCH["sponsors/match.py\nrapidfuzz token_set_ratio"]
-        EXPORT["sponsors/export.py"]
-        DB[("PostgreSQL (Neon)\nsystem of record")]
-        SEARCH[("Meilisearch\nderived, rebuildable index")]
-        RESUME["resume/extract.py, ocr.py, fields.py"]
-        JOBS["jobs/ats/*, jobs/jsearch.py, jobs/ingest.py"]
-        SCORE["matching/score.py"]
-        CLI["cli.py - Typer app: jf"]
-        WEBAPP["web/app.py - FastAPI"]
+    subgraph CORE["jobfinder - Python"]
+        direction TB
+        INGEST["Ingest + normalize"]
+        DB[("PostgreSQL\nsystem of record")]
+        MATCH["Sponsor match\nrapidfuzz"]
+        SCORE["Resume fit score"]
+        SEARCH[("Meilisearch\nderived index")]
     end
 
-    subgraph ENH["Optional, opt-in enhancement"]
-        DI["Azure AI Document Intelligence"]
-        LLM["Generic OpenAI-compatible provider\n(only if a credit pool is confirmed alive)"]
+    subgraph OUT["Interfaces"]
+        direction TB
+        CLI["CLI - jf"]
+        WEB["Web UI\nFastAPI + htmx"]
+        EXT["Chrome extension\nbadge overlay"]
     end
 
-    subgraph EXT["Chrome extension, TypeScript MV3"]
-        BUNDLE[("sponsors.json\nbundled, refreshed monthly")]
-        CONTENT["content script\nsite adapters"]
-        MATCHERTS["matcher.ts\nin-browser fuzzy match"]
-        OVERLAY["overlay.ts\nIND Recognised Sponsor badge"]
-    end
+    IND --> INGEST
+    ATS --> INGEST
+    JSEARCH --> INGEST
+    RESUME --> INGEST
+    INGEST --> DB
+    DB <--> MATCH
+    DB <--> SCORE
+    DB -. "reindexed on write" .-> SEARCH
 
-    subgraph WEB["Web UI, jf serve\n127.0.0.1 locally, also deployed on Modal"]
-        TEMPLATES["Jinja2 templates + htmx\nsearch, filters, company lookup"]
-    end
-
-    IND -->|"polite monthly GET"| SCRAPE
-    SCRAPE --> NORM --> DB
-    DB --> MATCH --> SCORE
-    DB --> EXPORT --> BUNDLE
-
-    RESUME --> DB
-    RESUME -. optional .-> DI
-    RESUME -. "optional, gated" .-> LLM
-
-    ATSSRC --> JOBS
-    JSEARCH --> JOBS
-    JOBS --> DB --> SCORE --> DB
-    DB -. "reindexed on ingest/rescore" .-> SEARCH
-
-    CLI --> SCRAPE
-    CLI --> RESUME
-    CLI --> JOBS
-    CLI --> SCORE
-    SEARCH -->|"ranked, typo-tolerant"| WEBAPP
-    DB -.->|"fallback if search is down"| WEBAPP
-    WEBAPP --> TEMPLATES
-
-    PAGE --> CONTENT --> MATCHERTS
-    BUNDLE --> MATCHERTS
-    MATCHERTS --> OVERLAY -->|renders on| PAGE
+    DB --> CLI
+    DB --> WEB
+    SEARCH -. "ranked search,\nfalls back to DB" .-> WEB
+    DB -->|"monthly snapshot"| EXT
 
     classDef source fill:#eceff1,stroke:#607d8b,stroke-width:1.5px,color:#263238
     classDef core fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
-    classDef webui fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
-    classDef extension fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
-    classDef enhancement fill:#fff8e1,stroke:#f9a825,stroke-width:1.5px,stroke-dasharray:3 3,color:#e65100
+    classDef out fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
 
-    class IND,PAGE,ATSSRC,JSEARCH source
-    class SCRAPE,NORM,MATCH,EXPORT,DB,SEARCH,CLI,WEBAPP,RESUME,JOBS,SCORE core
-    class DI,LLM enhancement
-    class BUNDLE,CONTENT,MATCHERTS,OVERLAY extension
-    class TEMPLATES webui
+    class IND,ATS,JSEARCH,RESUME source
+    class INGEST,DB,MATCH,SCORE,SEARCH core
+    class CLI,WEB,EXT out
 ```
 
-Blue = built (the whole core package, every phase), purple = the Chrome
-extension (built), green = the web UI (built), gray = an external source
-JobFinder reads from, amber dashed = optional opt-in enhancement (the only
-pieces still off by default).
+Grey = external source, blue = the core pipeline and storage, green = a
+user-facing interface. The extension never calls a server at runtime -
+`EXT` reads the monthly snapshot bundled at build time, not a live
+request. Two optional, opt-in enhancements aren't in the diagram since
+they're off by default: Azure AI Document Intelligence and a generic
+OpenAI-compatible provider, both only for resume parsing.
 
 ### Sponsor registry sync
 
@@ -206,19 +183,15 @@ All five phases from the original plan are built:
 
 Past the original five, two more have landed: **storage migrated from
 SQLite to PostgreSQL** (Neon), and a **Meilisearch search index** was
-added on top of it for ranked, typo-tolerant search - both deployed
-alongside the app on Modal (see `deploy/README.md`).
+added on top of it for ranked, typo-tolerant search - both designed to
+run alongside the app on Modal (see Hosting above and `deploy/README.md`).
 
 What's explicitly NOT built, by design: automatic discovery of which
-sponsor uses which ATS/slug (job-research's DuckDuckGo-based approach was
-deliberately not repeated here - pass a known `--slug` instead), direct
-LinkedIn/Indeed server-side scraping (considered and rejected as the same
-ToS-risk category as Adzuna, worse), and any LinkedIn/Indeed-selector
-verification beyond best-effort (see `extension/README.md`).
-
-Deeper reasoning and the hackathon-credential/job-research research behind
-these decisions: `~/.claude/plans/zippy-pondering-scroll.md` (local
-planning notes, not in the repo).
+sponsor uses which ATS/slug (a search-engine-based approach was
+considered and rejected as too fragile - pass a known `--slug` instead),
+direct LinkedIn/Indeed server-side scraping (considered and rejected as
+the same ToS-risk category as Adzuna, worse), and any LinkedIn/Indeed-
+selector verification beyond best-effort (see `extension/README.md`).
 
 ## Quick start
 
