@@ -1,8 +1,10 @@
 name: Sync IND sponsors
 
 on:
-  schedule:
-    - cron: "0 9 1 * *"
+  # Monthly cron disabled (2026-10-04): paused alongside the Modal
+  # deployment to stop recurring activity. Run manually (Actions tab ->
+  # Run workflow, or `gh workflow run sync-sponsors.yml`) any time, or
+  # restore the schedule once the app is redeployed.
   workflow_dispatch: {}
 
 jobs:

@@ -1,8 +1,9 @@
 name: Deploy to Modal
 
 on:
-  push:
-    branches: [main]
+  # Auto-deploy-on-push disabled (2026-10-04): the Modal app was stopped
+  # to stop billing. Run this manually (Actions tab -> Run workflow, or
+  # `gh workflow run deploy-modal.yml`) to redeploy when it's wanted again.
   workflow_dispatch: {}
 
 jobs:
