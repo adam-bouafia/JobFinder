@@ -1,4 +1,4 @@
-"""Export the synced sponsor register as a JSON snapshot for the extension/API."""
+"""Export the synced sponsor register as a JSON snapshot for external use."""
 
 from __future__ import annotations
 
