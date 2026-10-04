@@ -7,9 +7,8 @@
 Storage is a real networked Postgres (Neon), not SQLite-on-a-Volume
 anymore - see docs/architecture.md for why. `DATABASE_URL` comes from the
 `jobfinder-db` Modal Secret. The Volume still exists, but only for resume
-PDF uploads and the `sponsors_latest.json` snapshot the Chrome extension
-bundles - both plain files, nothing shared/mutable the way the old SQLite
-file was.
+PDF uploads and the tracked `sponsors_latest.json` snapshot - both plain
+files, nothing shared/mutable the way the old SQLite file was.
 
 Still pinned to a single container (max_containers=1). That was
 originally required (Volume "last write wins" under concurrent SQLite

@@ -80,8 +80,8 @@ Postgres query automatically.
   `jobfinder-search` is reused as `MEILISEARCH_KEY` for the same three
   functions (one secret, two env var names - see `_point_at_search()`).
 - Mounts a Modal Volume at `/data` too, but only for resume PDF uploads
-  and the sponsor snapshot JSON the Chrome extension bundles - plain
-  files, not a shared mutable database anymore.
+  and the tracked sponsor snapshot JSON - plain files, not a shared
+  mutable database anymore.
 - Still pinned to a single container (`max_containers=1`) - that was
   originally required (SQLite-on-a-Volume's "last write wins" risk under
   concurrent writers), Postgres removes that specific constraint, so
