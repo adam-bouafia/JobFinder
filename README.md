@@ -1,5 +1,19 @@
 # JobFinder
 
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![Typer](https://img.shields.io/badge/CLI-Typer-000000?logo=python&logoColor=white)
+![htmx](https://img.shields.io/badge/htmx-3D72D7?logo=htmx&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-4169E1?logo=postgresql&logoColor=white)
+![Meilisearch](https://img.shields.io/badge/Meilisearch-FF5CAA?logo=meilisearch&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Chrome Extension](https://img.shields.io/badge/Chrome%20Extension-MV3-4285F4?logo=googlechrome&logoColor=white)
+![Modal](https://img.shields.io/badge/Hosting-Modal-000000?logo=modal&logoColor=white)
+
+[![GitHub](https://img.shields.io/badge/GitHub-adam--bouafia-181717?logo=github&logoColor=white)](https://github.com/adam-bouafia)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Adam%20Bouafia-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/adam-bouafia)
+[![Portfolio](https://img.shields.io/badge/Portfolio-adam--bouafia.github.io-111111?logo=googlechrome&logoColor=white)](https://adam-bouafia.github.io)
+
 Personal job-search tool for the Dutch market. Working name - will be
 renamed later.
 
@@ -161,13 +175,13 @@ TypeScript port in the extension).
 ### Hosting
 
 `jf serve` binds `127.0.0.1` by default for purely local use - nothing
-about that has changed. Separately, the app is also deployed on
-[Modal](https://modal.com) (see `deploy/`), auto-deploying on every push
-to `main` via `.github/workflows/deploy-modal.yml`. The two aren't
-mutually exclusive: local-first stays the default for quick local
-testing, the Modal deployment is the actually-used, always-reachable
-instance - see `deploy/README.md` for the full setup (Postgres via Neon,
-search via self-hosted Meilisearch, secrets).
+about that has changed. The app can also run on [Modal](https://modal.com)
+(see `deploy/`) - Postgres via Neon, search via self-hosted Meilisearch,
+full setup in `deploy/README.md`. **Currently paused**: the deployed
+instance is stopped and `deploy-modal.yml`'s auto-deploy-on-push is
+disabled (both to stop billing while the repo sits idle) - redeploy with
+`uv run modal deploy deploy/modal_app.py` or by re-enabling the workflow's
+push trigger.
 
 ### Risk / legal posture
 
@@ -239,5 +253,6 @@ parsing (OCR fallback needs `tesseract` installed separately), and job
 ingestion with resume-derived scoring (direct ATS APIs need a known
 company slug; JSearch adds free-text search, CLI-only, filtered to
 direct-domain results). Storage is PostgreSQL (Neon), with a Meilisearch
-search index on top for ranked, typo-tolerant results - both deployed
-alongside the app on Modal.
+search index on top for ranked, typo-tolerant results - both designed to
+run alongside the app on Modal (see Hosting above for the current paused
+state).
