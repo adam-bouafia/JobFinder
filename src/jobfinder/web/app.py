@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 
 from .. import db
 from ..jobs.export import to_markdown, to_pdf_bytes, to_text
-from ..jobs.ingest import StoredJob, count_jobs, list_jobs, reindex_all_jobs
+from ..jobs.ingest import StoredJob, count_jobs, distinct_cities, list_jobs, reindex_all_jobs
 from ..matching.score import rescore_jobs
 from ..paths import RESUME_DIR
 from ..resume.parse import latest_resume_profile, parse_resume
@@ -122,6 +122,7 @@ def create_app() -> FastAPI:
         stats = db.sponsor_stats(dsn)
         jobs, total = _search(dsn, query, city, sponsors_only, open_applications_only, experience)
         resume_profile = latest_resume_profile(dsn)
+        cities = distinct_cities(dsn)
         return templates.TemplateResponse(
             request,
             "index.html",
@@ -131,6 +132,7 @@ def create_app() -> FastAPI:
                 "total": total,
                 "query": query,
                 "city": city,
+                "cities": cities,
                 "sponsors_only": sponsors_only,
                 "open_applications_only": open_applications_only,
                 "experience": experience,

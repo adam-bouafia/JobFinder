@@ -240,6 +240,23 @@ def list_jobs(
     return [StoredJob.from_row(row) for row in rows]
 
 
+def distinct_cities(dsn: str | None = None, limit: int = 300) -> list[str]:
+    """Distinct, non-empty location strings already stored, for the web
+    UI's city filter <datalist> - autocomplete suggestions drawn from real
+    ingested data instead of a hardcoded city list."""
+    with cursor(dsn) as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT location FROM jobs
+            WHERE location IS NOT NULL AND location != ''
+            ORDER BY location
+            LIMIT %s
+            """,
+            (limit,),
+        ).fetchall()
+    return [row["location"] for row in rows]
+
+
 def count_jobs(
     dsn: str | None = None,
     *,

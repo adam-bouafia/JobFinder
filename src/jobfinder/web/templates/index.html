@@ -40,7 +40,12 @@
       <button type="submit">Search</button>
     </div>
     <div class="filters">
-      <input type="text" name="city" value="{{ city }}" placeholder="City (e.g. Amsterdam)" autocomplete="off" class="city-input">
+      <input type="text" name="city" value="{{ city }}" placeholder="City (e.g. Amsterdam)" autocomplete="off" class="city-input" list="city-options">
+      <datalist id="city-options">
+        {% for c in cities %}
+        <option value="{{ c }}">
+        {% endfor %}
+      </datalist>
       <label>
         <input type="checkbox" name="sponsors_only" value="true" {{ 'checked' if sponsors_only }}>
         IND sponsors only

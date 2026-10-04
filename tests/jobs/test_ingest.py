@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from jobfinder import db
-from jobfinder.jobs.ingest import ingest_jobs, list_jobs, reindex_all_jobs
+from jobfinder.jobs.ingest import distinct_cities, ingest_jobs, list_jobs, reindex_all_jobs
 from jobfinder.jobs.models import JobListing
 from jobfinder.search import meilisearch_client
 from jobfinder.sponsors.normalize import normalize
@@ -207,6 +207,22 @@ def test_reindex_all_jobs_pushes_every_row_into_the_default_index(
         assert hits[0]["title"] == "Senior Backend Engineer"
     finally:
         meilisearch_client.delete_index()
+
+
+def test_distinct_cities_returns_sorted_unique_locations(seeded_db: str) -> None:
+    ingest_jobs(
+        [
+            JobListing("Booking.com", "A", "Amsterdam, Netherlands", "https://x/1", "test"),
+            JobListing("Booking.com", "B", "Amsterdam, Netherlands", "https://x/2", "test"),
+            JobListing("Booking.com", "C", "Rotterdam, Netherlands", "https://x/3", "test"),
+            JobListing("Booking.com", "D", None, "https://x/4", "test"),
+        ],
+        dsn=seeded_db,
+    )
+
+    cities = distinct_cities(seeded_db)
+
+    assert cities == ["Amsterdam, Netherlands", "Rotterdam, Netherlands"]
 
 
 def test_list_jobs_multi_word_query_matches_words_out_of_order(seeded_db: str) -> None:
